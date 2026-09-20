@@ -1,0 +1,504 @@
+<?php
+include 'config.php';
+
+// Check Super Admin
+if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true || $_SESSION['role'] !== 'super_admin') {
+    header("Location: admin_login.php");
+    exit();
+}
+
+$error = '';
+$success = '';
+
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    // Get form data
+    $bus_name      = trim($_POST['bus_name']);
+    $bus_number    = trim($_POST['bus_no']);
+    $departure_time= trim($_POST['time']);
+    $route_category= trim($_POST['route']);
+    $owner_username= trim($_POST['owner_username']);
+    $owner_password= trim($_POST['owner_password']);
+    $owner_email   = trim($_POST['owner_email']);
+    $contact_no    = trim($_POST['contact_no']);
+    $start_location= trim($_POST['start_loc']);
+    $end_location  = trim($_POST['end_loc']);
+    $seat_capacity = intval($_POST['seat_capacity']);
+    $bus_type      = trim($_POST['bus_type']);
+    
+    // Conductor Details
+    $conductor_username = trim($_POST['conductor_username']);
+    $conductor_password = trim($_POST['conductor_password']);
+    $conductor_name     = trim($_POST['conductor_name']);
+    
+    // Validation
+    if (empty($bus_name) || empty($bus_number) || empty($owner_username) || empty($owner_password)) {
+        $error = "Please fill all required fields!";
+    } elseif (empty($conductor_username) || empty($conductor_password) || empty($conductor_name)) {
+        $error = "Please fill all conductor fields!";
+    } elseif (!filter_var($owner_email, FILTER_VALIDATE_EMAIL)) {
+        $error = "Please enter a valid email address!";
+    } elseif (strlen($owner_password) < 6) {
+        $error = "Owner password must be at least 6 characters long!";
+    } elseif (strlen($conductor_password) < 6) {
+        $error = "Conductor password must be at least 6 characters long!";
+    } else {
+        // Check duplicate bus number
+        $check_sql = "SELECT id FROM buses WHERE bus_number = ?";
+        $check_stmt = $conn->prepare($check_sql);
+        $check_stmt->bind_param("s", $bus_number);
+        $check_stmt->execute();
+        $check_result = $check_stmt->get_result();
+        
+        if ($check_result->num_rows > 0) {
+            $error = "This Bus Number already exists!";
+        } else {
+            // Check duplicate conductor username
+            $check_con_sql = "SELECT id FROM buses WHERE conductor_username = ?";
+            $check_con_stmt = $conn->prepare($check_con_sql);
+            $check_con_stmt->bind_param("s", $conductor_username);
+            $check_con_stmt->execute();
+            $check_con_result = $check_con_stmt->get_result();
+            
+            if ($check_con_result->num_rows > 0) {
+                $error = "Conductor username already exists!";
+            } else {
+                // Hash passwords
+                $hashed_owner_password = password_hash($owner_password, PASSWORD_DEFAULT);
+                $hashed_conductor_password = password_hash($conductor_password, PASSWORD_DEFAULT);
+                
+                // Insert
+                $sql = "INSERT INTO buses (bus_name, bus_number, owner_username, owner_password, owner_email, contact_no, route_category, start_location, end_location, departure_time, seat_capacity, bus_type, conductor_username, conductor_password, conductor_name, status) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')";
+                
+                $stmt = $conn->prepare($sql);
+                $stmt->bind_param("ssssssssssissss", 
+                    $bus_name, 
+                    $bus_number, 
+                    $owner_username, 
+                    $hashed_owner_password, 
+                    $owner_email, 
+                    $contact_no, 
+                    $route_category, 
+                    $start_location, 
+                    $end_location, 
+                    $departure_time, 
+                    $seat_capacity, 
+                    $bus_type,
+                    $conductor_username,
+                    $hashed_conductor_password,
+                    $conductor_name
+                );
+                
+                if ($stmt->execute()) {
+                    $bus_id = $stmt->insert_id;
+                    $success = "Bus added successfully! Bus ID: " . $bus_id;
+                    echo "<script>
+                            setTimeout(function() {
+                                window.location='admin_dashboard.php';
+                            }, 2000);
+                          </script>";
+                } else {
+                    $error = "Database error: " . $conn->error;
+                }
+                $stmt->close();
+            }
+            $check_con_stmt->close();
+        }
+        $check_stmt->close();
+    }
+}
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add New Bus - Admin Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Poppins', sans-serif; 
+            background: linear-gradient(135deg, #00255a 0%, #004080 100%);
+            min-height: 100vh;
+            padding: 20px;
+            padding-top: 80px;
+        }
+        
+        .page-wrapper {
+            max-width: 600px;
+            margin: 0 auto 40px;
+            padding: 0 15px;
+        }
+        
+        .form-container {
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            padding: 40px;
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .form-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-header h2 {
+            color: #003580;
+            font-weight: 700;
+            font-size: 22px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .form-header h2 i {
+            color: #28a745;
+            margin-right: 10px;
+        }
+        .form-header p {
+            color: #666;
+            font-size: 13px;
+            margin-top: 5px;
+        }
+        
+        .alert {
+            padding: 14px 18px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            font-weight: 500;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .alert-danger {
+            background: #fce4e4;
+            color: #c0392b;
+            border-left: 4px solid #c0392b;
+        }
+        .alert-success {
+            background: #e4fce4;
+            color: #27ae60;
+            border-left: 4px solid #27ae60;
+        }
+        
+        label {
+            display: block;
+            margin-top: 18px;
+            font-weight: 600;
+            font-size: 13px;
+            color: #333;
+            letter-spacing: 0.3px;
+        }
+        label i {
+            color: #003580;
+            margin-right: 6px;
+        }
+        label .required {
+            color: #e74c3c;
+            margin-left: 3px;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 12px 16px;
+            margin-top: 6px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.3s ease;
+            background: #fafafa;
+        }
+        input:focus, select:focus {
+            border-color: #003580;
+            background: #fff;
+            box-shadow: 0 0 0 4px rgba(0, 53, 128, 0.1);
+        }
+        input::placeholder {
+            color: #aaa;
+            font-size: 13px;
+        }
+        
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        .section-divider {
+            border-top: 2px dashed #d0d7de;
+            margin: 28px 0 18px 0;
+            padding-top: 18px;
+            color: #003580;
+            font-weight: 700;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            letter-spacing: 0.5px;
+        }
+        .section-divider i {
+            color: #28a745;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #28a745, #1e7e34);
+            color: white;
+            border: none;
+            padding: 16px;
+            width: 100%;
+            border-radius: 14px;
+            margin-top: 28px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.4);
+        }
+        .btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        .btn i {
+            margin-right: 8px;
+        }
+        
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 18px;
+            color: #666;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: 0.2s;
+        }
+        .back-link:hover {
+            color: #003580;
+            text-decoration: underline;
+        }
+        
+        @media (max-width: 576px) {
+            .row {
+                grid-template-columns: 1fr;
+                gap: 0;
+            }
+            .form-container {
+                padding: 25px 20px;
+            }
+            .page-wrapper {
+                margin-top: 80px;
+            }
+        }
+        
+        .password-strength {
+            height: 4px;
+            border-radius: 4px;
+            margin-top: 8px;
+            background: #eee;
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        .password-strength-bar {
+            height: 100%;
+            width: 0%;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+
+<?php include 'header.php'; ?>
+
+<div class="page-wrapper">
+    <div class="form-container">
+        
+        <div class="form-header">
+            <h2><i class="fas fa-plus-circle"></i> Add New Bus</h2>
+            <p>Fill in the details to add a bus, owner and conductor account</p>
+        </div>
+        
+        <?php if ($error): ?>
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error); ?>
+            </div>
+        <?php endif; ?>
+        
+        <?php if ($success): ?>
+            <div class="alert alert-success">
+                <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($success); ?>
+            </div>
+        <?php endif; ?>
+        
+        <form method="POST" action="add_bus.php" id="addBusForm">
+            
+            <!-- Bus Details -->
+            <label><i class="fas fa-bus"></i> Bus Name / Service <span class="required">*</span></label>
+            <input type="text" name="bus_name" required placeholder="e.g. KEILY SUPER COACH">
+            
+            <div class="row">
+                <div>
+                    <label><i class="fas fa-id-card"></i> Registration No <span class="required">*</span></label>
+                    <input type="text" name="bus_no" required placeholder="e.g. NB-7048">
+                </div>
+                <div>
+                    <label><i class="fas fa-clock"></i> Departure Time <span class="required">*</span></label>
+                    <input type="time" name="time" required>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div>
+                    <label><i class="fas fa-route"></i> Start From <span class="required">*</span></label>
+                    <input type="text" name="start_loc" required placeholder="e.g. Matara">
+                </div>
+                <div>
+                    <label><i class="fas fa-flag-checkered"></i> End At <span class="required">*</span></label>
+                    <input type="text" name="end_loc" required placeholder="e.g. Tangalle">
+                </div>
+            </div>
+            
+            <label><i class="fas fa-road"></i> Route Category <span class="required">*</span></label>
+            <select name="route" required>
+                <option value="">-- Choose a Road --</option>
+                <option value="Kataragama">Kataragama Road</option>
+                <option value="Hakmana">Hakmana Road</option>
+                <option value="Deniyaya">Deniyaya Road</option>
+                <option value="Colombo">Colombo Road</option>
+            </select>
+            
+            <div class="row">
+                <div>
+                    <label><i class="fas fa-chair"></i> Seat Capacity <span class="required">*</span></label>
+                    <input type="number" name="seat_capacity" required placeholder="e.g. 45" min="10" max="70" value="45">
+                </div>
+                <div>
+                    <label><i class="fas fa-bus-alt"></i> Bus Type</label>
+                    <select name="bus_type">
+                        <option value="Normal">Normal</option>
+                        <option value="AC">Air Conditioned (AC)</option>
+                        <option value="Semi-Luxury">Semi-Luxury</option>
+                        <option value="Luxury">Luxury</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Owner Details -->
+            <div class="section-divider">
+                <i class="fas fa-user-shield"></i> Create Owner Account
+            </div>
+            
+            <div class="row">
+                <div>
+                    <label><i class="fas fa-user"></i> Owner Username <span class="required">*</span></label>
+                    <input type="text" name="owner_username" required placeholder="e.g. hiran_owner">
+                </div>
+                <div>
+                    <label><i class="fas fa-lock"></i> Owner Password <span class="required">*</span></label>
+                    <input type="password" name="owner_password" id="owner_password" required placeholder="Min 6 characters">
+                    <div class="password-strength">
+                        <div class="password-strength-bar" id="ownerStrengthBar"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <label><i class="fas fa-envelope"></i> Owner Email <span class="required">*</span></label>
+            <input type="email" name="owner_email" required placeholder="owner@gmail.com">
+            
+            <label><i class="fas fa-phone"></i> Contact Number <span class="required">*</span></label>
+            <input type="text" name="contact_no" required placeholder="0714575896">
+            
+            <!-- Conductor Details -->
+            <div class="section-divider">
+                <i class="fas fa-user-tie"></i> Create Conductor Account
+            </div>
+            
+            <div class="row">
+                <div>
+                    <label><i class="fas fa-user"></i> Conductor Username <span class="required">*</span></label>
+                    <input type="text" name="conductor_username" required placeholder="e.g. conductor1">
+                </div>
+                <div>
+                    <label><i class="fas fa-lock"></i> Conductor Password <span class="required">*</span></label>
+                    <input type="password" name="conductor_password" id="conductor_password" required placeholder="Min 6 characters">
+                    <div class="password-strength">
+                        <div class="password-strength-bar" id="conductorStrengthBar"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <label><i class="fas fa-user-tie"></i> Conductor Full Name <span class="required">*</span></label>
+            <input type="text" name="conductor_name" required placeholder="e.g. S. Perera">
+            
+            <button type="submit" class="btn" id="submitBtn">
+                <span id="btnText"><i class="fas fa-plus"></i> ADD BUS TO SYSTEM</span>
+                <span id="btnSpinner" style="display:none;">
+                    <i class="fas fa-spinner fa-spin"></i> Processing...
+                </span>
+            </button>
+            
+            <a href="admin_dashboard.php" class="back-link">
+                <i class="fas fa-arrow-left"></i> Cancel and Go Back
+            </a>
+        </form>
+    </div>
+</div>
+
+<script>
+// Password Strength Meter for Owner
+document.getElementById('owner_password').addEventListener('input', function() {
+    const password = this.value;
+    const bar = document.getElementById('ownerStrengthBar');
+    let strength = 0;
+    
+    if (password.length >= 6) strength += 20;
+    if (password.length >= 8) strength += 20;
+    if (password.match(/[a-z]+/)) strength += 20;
+    if (password.match(/[A-Z]+/)) strength += 20;
+    if (password.match(/[0-9]+/)) strength += 20;
+    
+    bar.style.width = strength + '%';
+    if (strength < 40) bar.style.background = '#e74c3c';
+    else if (strength < 70) bar.style.background = '#f39c12';
+    else bar.style.background = '#27ae60';
+});
+
+// Password Strength Meter for Conductor
+document.getElementById('conductor_password').addEventListener('input', function() {
+    const password = this.value;
+    const bar = document.getElementById('conductorStrengthBar');
+    let strength = 0;
+    
+    if (password.length >= 6) strength += 20;
+    if (password.length >= 8) strength += 20;
+    if (password.match(/[a-z]+/)) strength += 20;
+    if (password.match(/[A-Z]+/)) strength += 20;
+    if (password.match(/[0-9]+/)) strength += 20;
+    
+    bar.style.width = strength + '%';
+    if (strength < 40) bar.style.background = '#e74c3c';
+    else if (strength < 70) bar.style.background = '#f39c12';
+    else bar.style.background = '#27ae60';
+});
+
+// Form Submit Loading
+document.getElementById('addBusForm').addEventListener('submit', function() {
+    document.getElementById('btnText').style.display = 'none';
+    document.getElementById('btnSpinner').style.display = 'inline';
+    document.getElementById('submitBtn').disabled = true;
+});
+</script>
+
+</body>
+</html>
