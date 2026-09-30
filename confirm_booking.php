@@ -1,10 +1,9 @@
 <?php
 include 'config.php';
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once 'tab_auth.php';
 
-// ============ CHECK IF USER IS LOGGED IN ============
+requireTabAuth('login.php');
+
 if (!isset($_SESSION['user_logged_in']) || $_SESSION['user_logged_in'] !== true) {
     header("Location: login.php");
     exit();
@@ -28,10 +27,16 @@ $customer_email = '';
 $customer_name = '';
 $ref_code = '';
 $receipt_bus_name = "SUPER COACH";
+$receipt_bus_contact = '';      // ✅ NEW: Bus contact number
 $booking_id = 0;
 $error = '';
 
-// ============ GET USER DETAILS ============
+$route_name = '';
+$distance_km = 0;
+$fare_per_seat = 0;
+$total_fare = 0;
+$seat_count = 0;
+
 if (isset($_SESSION['user_email']) && !empty($_SESSION['user_email'])) {
     $customer_email = $_SESSION['user_email'];
 }
@@ -39,17 +44,24 @@ if (isset($_SESSION['user_name']) && !empty($_SESSION['user_name'])) {
     $customer_name = $_SESSION['user_name'];
 }
 
-// ============ PROCESS POST DATA ============
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
-    // Get form data
     $bus_id = isset($_POST['bus_id']) ? intval($_POST['bus_id']) : 0;
-    $seats = isset($_POST['selected_seats']) ? trim($_POST['selected_seats']) : (isset($_POST['seats']) ? trim($_POST['seats']) : '');
-    $date = isset($_POST['booking_date']) ? trim($_POST['booking_date']) : (isset($_POST['travel_date']) ? trim($_POST['travel_date']) : '');
+    $seats = isset($_POST['selected_seats']) ? trim($_POST['selected_seats']) : '';
+    $date = isset($_POST['booking_date']) ? trim($_POST['booking_date']) : '';
     $pickup = isset($_POST['pickup']) ? trim($_POST['pickup']) : '';
-    $dropoff = isset($_POST['dropoff']) ? trim($_POST['dropoff']) : (isset($_POST['destination']) ? trim($_POST['destination']) : '');
+    $dropoff = isset($_POST['dropoff']) ? trim($_POST['dropoff']) : '';
     
-    // ============ VALIDATION ============
+    $route_name = isset($_POST['route_name']) ? trim($_POST['route_name']) : '';
+    $distance_km = isset($_POST['distance_km']) ? floatval($_POST['distance_km']) : 0;
+    $fare_per_seat = isset($_POST['fare_per_seat']) ? floatval($_POST['fare_per_seat']) : 0;
+    $total_fare = isset($_POST['total_fare']) ? floatval($_POST['total_fare']) : 0;
+    
+    if (!empty($seats)) {
+        $seat_array = explode(',', $seats);
+        $seat_count = count($seat_array);
+    }
+    
     if ($bus_id <= 0) {
         $error = "Invalid bus selection!";
     } elseif (empty($seats)) {
@@ -64,9 +76,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $error = "Customer email is required! Please login again.";
     }
     
-    // ============ GET BUS NAME ============
+    // ✅ UPDATED: Get bus_name AND contact_no
     if (empty($error) && $bus_id > 0) {
-        $bus_query = $conn->prepare("SELECT bus_name FROM buses WHERE id = ?");
+        $bus_query = $conn->prepare("SELECT bus_name, contact_no FROM buses WHERE id = ?");
         $bus_query->bind_param("i", $bus_id);
         $bus_query->execute();
         $bus_result = $bus_query->get_result();
@@ -74,17 +86,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($bus_result && $bus_result->num_rows > 0) {
             $bus_data = $bus_result->fetch_assoc();
             $receipt_bus_name = $bus_data['bus_name'];
+            $receipt_bus_contact = $bus_data['contact_no'] ?? 'N/A';  // ✅ NEW: Get contact
         } else {
             $error = "Bus not found!";
         }
         $bus_query->close();
     }
     
-    // ============ GENERATE REFERENCE CODE ============
     if (empty($error)) {
         $ref_code = "BK-" . strtoupper(substr(md5(time() . rand()), 0, 5));
         
-        // Check if ref_code already exists
         $check_ref = $conn->prepare("SELECT id FROM bookings WHERE ref_code = ?");
         $check_ref->bind_param("s", $ref_code);
         $check_ref->execute();
@@ -98,56 +109,71 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $check_ref->close();
     }
     
-    // ============ INSERT BOOKING ============
     if (empty($error)) {
-        // Check which email column exists
         $col_check = $conn->query("SHOW COLUMNS FROM bookings LIKE 'customer_email'");
         $email_field = ($col_check && $col_check->num_rows > 0) ? 'customer_email' : 'email';
         
-        // Check which name column exists
         $name_check = $conn->query("SHOW COLUMNS FROM bookings LIKE 'customer_name'");
-        $name_field = ($name_check && $name_check->num_rows > 0) ? 'customer_name' : '';
+        $has_name_field = ($name_check && $name_check->num_rows > 0);
         
-        // Check if dropoff_location column exists
         $drop_col_check = $conn->query("SHOW COLUMNS FROM bookings LIKE 'dropoff_location'");
         $drop_field = ($drop_col_check && $drop_col_check->num_rows > 0) ? 'dropoff_location' : 'drop_location';
         
-        // Build INSERT query dynamically
-        $sql = "INSERT INTO bookings (bus_id, seat_numbers, journey_date, pickup_location, $drop_field, $email_field, ref_code";
+        $sql = "INSERT INTO bookings (
+                    bus_id, 
+                    seat_numbers, 
+                    journey_date, 
+                    pickup_location, 
+                    $drop_field, 
+                    $email_field, 
+                    ref_code,
+                    boarding_point,
+                    dropping_point,
+                    distance_km,
+                    fare_per_seat,
+                    total_fare";
         
-        // Add customer_name if column exists
-        if (!empty($name_field)) {
-            $sql .= ", $name_field";
+        if ($has_name_field) {
+            $sql .= ", customer_name";
         }
-        $sql .= ") VALUES (?, ?, ?, ?, ?, ?, ?";
+        $sql .= ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?";
         
-        if (!empty($name_field)) {
+        if ($has_name_field) {
             $sql .= ", ?";
         }
         $sql .= ")";
         
         $stmt = $conn->prepare($sql);
         
-        // Bind parameters
-        if (!empty($name_field)) {
-            $stmt->bind_param("isssssss", $bus_id, $seats, $date, $pickup, $dropoff, $customer_email, $ref_code, $customer_name);
+        if (!$stmt) {
+            $error = "Prepare failed: " . $conn->error;
         } else {
-            $stmt->bind_param("issssss", $bus_id, $seats, $date, $pickup, $dropoff, $customer_email, $ref_code);
+            if ($has_name_field) {
+                $stmt->bind_param("issssssssddds", 
+                    $bus_id, $seats, $date, $pickup, $dropoff, 
+                    $customer_email, $ref_code, $pickup, $dropoff, 
+                    $distance_km, $fare_per_seat, $total_fare, $customer_name
+                );
+            } else {
+                $stmt->bind_param("issssssssddd", 
+                    $bus_id, $seats, $date, $pickup, $dropoff, 
+                    $customer_email, $ref_code, $pickup, $dropoff, 
+                    $distance_km, $fare_per_seat, $total_fare
+                );
+            }
+            
+            if ($stmt->execute()) {
+                $booking_id = $stmt->insert_id;
+            } else {
+                $error = "Execute error: " . $stmt->error;
+            }
+            $stmt->close();
         }
-        
-        if ($stmt->execute()) {
-            $booking_id = $stmt->insert_id;
-        } else {
-            $error = "Database error: " . $conn->error;
-        }
-        $stmt->close();
     }
     
-    // ============ SEND EMAILS ============
     if (empty($error) && $booking_id > 0) {
         $mail = new PHPMailer(true);
         try {
-            // SMTP Configuration
             $mail->isSMTP();
             $mail->Host       = 'smtp.gmail.com';
             $mail->SMTPAuth   = true;
@@ -157,7 +183,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $mail->Port       = 587;
             $mail->setFrom('pramudithamihiran@gmail.com', $receipt_bus_name . ' Bus Service');
             
-            // ============ EMAIL 1: TO CUSTOMER ============
+            // ============ CUSTOMER EMAIL ============
             $mail->clearAddresses();
             $mail->addAddress($customer_email);
             $mail->isHTML(true);
@@ -174,8 +200,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         <p><strong>Reference Code:</strong> <span style='font-size:20px; color:#003580; font-weight:bold;'>$ref_code</span></p>
                         <p><strong>Passenger:</strong> " . htmlspecialchars($customer_name) . "</p>
                         <p><strong>Travel Date:</strong> $date</p>
-                        <p><strong>Seats:</strong> $seats</p>
+                        <p><strong>Seats:</strong> $seats ($seat_count seats)</p>
                         <p><strong>Route:</strong> $pickup → $dropoff</p>
+                        
+                        <!-- ✅ NEW: Contact Bus Number in Customer Email -->
+                        <div style='background:#e8f0fe; border-left:4px solid #003580; padding:12px 15px; border-radius:8px; margin:15px 0;'>
+                            <p style='margin:0; color:#003580; font-weight:bold; font-size:13px;'>📞 CONTACT BUS</p>
+                            <p style='margin:5px 0 0; font-size:18px; color:#003580; font-weight:bold;'>" . htmlspecialchars($receipt_bus_contact) . "</p>
+                            <p style='margin:5px 0 0; font-size:11px; color:#666;'>Call this number for any inquiries about your journey</p>
+                        </div>
+                        
+                        <hr style='border:1px dashed #eee;'>
+                        <p><strong>Distance:</strong> " . number_format($distance_km, 1) . " km</p>
+                        <p><strong>Fare per seat:</strong> Rs. " . number_format($fare_per_seat, 2) . "</p>
+                        <p style='font-size:18px; color:#28a745;'><strong>Total Fare: Rs. " . number_format($total_fare, 2) . "</strong></p>
                         <hr style='border:1px dashed #eee;'>
                         <p style='font-size:12px; color:#888; text-align:center;'>Please present this confirmation at the boarding point.</p>
                     </div>
@@ -186,7 +224,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             ";
             $mail->send();
 
-            // ============ EMAIL 2: TO ADMIN/OWNER ============
+            // ============ ADMIN EMAIL ============
             $mail->clearAddresses();
             $mail->addAddress('pramudithamihiran@gmail.com');
             $mail->Subject = 'New Booking Alert! - ' . $ref_code;
@@ -201,6 +239,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     <p><strong>Date:</strong> $date</p>
                     <p><strong>Seats:</strong> <span style='color:#28a745; font-weight:bold;'>$seats</span></p>
                     <p><strong>Route:</strong> $pickup → $dropoff</p>
+                    
+                    <!-- ✅ NEW: Contact Number in Admin Email -->
+                    <p><strong>Bus Contact:</strong> <span style='color:#003580; font-weight:bold;'>" . htmlspecialchars($receipt_bus_contact) . "</span></p>
+                    
+                    <p><strong>Distance:</strong> " . number_format($distance_km, 1) . " km</p>
+                    <p><strong>Total Fare:</strong> <span style='color:#28a745; font-weight:bold;'>Rs. " . number_format($total_fare, 2) . "</span></p>
                     <hr style='border:1px dashed #ccc;'>
                     <p style='font-size:12px; color:#888;'>Booking ID: $booking_id</p>
                 </div>
@@ -208,11 +252,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $mail->send();
 
         } catch (Exception $e) {
-            // Email error - but booking is still saved
+            // Email error ignored
         }
     }
     
-    // ============ IF ERROR, REDIRECT BACK ============
     if (!empty($error)) {
         echo "<script>
                 alert('" . addslashes($error) . "');
@@ -237,30 +280,36 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        
         body { 
             font-family: 'Poppins', sans-serif; 
-            background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
-            padding-top: 80px;
+            background: linear-gradient(135deg, #0f0022 0%, #1a0033 50%, #0a0018 100%) !important;
+            background-attachment: fixed !important;
+            padding-top: 90px;
             padding-bottom: 40px;
             min-height: 100vh;
+            color: #e0e0e0;
         }
         
         .main-wrapper {
             display: flex; 
             justify-content: center; 
-            align-items: center; 
+            align-items: flex-start; 
             min-height: calc(100vh - 120px); 
-            padding: 20px; 
+            padding: 20px 15px; 
         }
         
+        /* ===== RECEIPT CARD ===== */
         .receipt { 
-            background: white; 
+            background: rgba(22, 22, 22, 0.85);
+            backdrop-filter: blur(20px);
             width: 100%; 
-            max-width: 450px; 
-            padding: 35px; 
+            max-width: 480px; 
+            padding: 30px 28px; 
             border-radius: 24px; 
-            box-shadow: 0 15px 50px rgba(0,0,0,0.12);
-            border-top: 8px solid #28a745;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 183, 0, 0.2);
+            border-top: 6px solid #ffb700;
             text-align: center;
             animation: fadeIn 0.5s ease;
         }
@@ -271,55 +320,63 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         
         .receipt .icon {
-            font-size: 60px;
+            font-size: 55px;
             color: #28a745;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
+            filter: drop-shadow(0 0 20px rgba(40, 167, 69, 0.4));
         }
         
         .receipt h3 { 
-            color: #003580; 
-            margin-bottom: 5px; 
+            color: #ffffff; 
+            margin-bottom: 3px; 
             text-transform: uppercase;
             font-weight: 700;
-            font-size: 22px;
+            font-size: 20px;
+            letter-spacing: 0.5px;
         }
         
         .receipt .bus-sub {
-            color: #888;
-            font-size: 14px;
+            color: #b0b0b0;
+            font-size: 13px;
             margin-bottom: 15px;
         }
         
+        /* ===== SUCCESS MESSAGE ===== */
         .success-msg { 
-            background: #e7f5ea; 
-            color: #28a745; 
-            padding: 12px 20px; 
+            background: rgba(40, 167, 69, 0.15);
+            color: #4ade80; 
+            padding: 10px 20px; 
             border-radius: 12px; 
-            margin-bottom: 20px; 
-            font-weight: 600; 
-            font-size: 14px;
+            margin-bottom: 18px; 
+            font-weight: 700; 
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            border: 1px solid rgba(40, 167, 69, 0.3);
         }
         
         .success-msg i {
             margin-right: 8px;
         }
         
+        /* ===== JOURNEY DETAILS ===== */
         .receipt-details { 
             text-align: left; 
-            background: #f8faff; 
-            padding: 18px 20px; 
+            background: rgba(15, 0, 34, 0.6);
+            padding: 16px 18px; 
             border-radius: 14px; 
-            margin-bottom: 20px; 
-            border: 1px solid #eef2f7;
+            margin-bottom: 14px; 
+            border: 1px solid rgba(255, 183, 0, 0.15);
         }
         
         .detail-row { 
             display: flex; 
             justify-content: space-between; 
+            align-items: center;
             margin-bottom: 8px; 
-            font-size: 13px; 
-            border-bottom: 1px dashed #eef2f7; 
+            font-size: 12.5px; 
+            border-bottom: 1px dashed rgba(255, 183, 0, 0.1);
             padding-bottom: 6px; 
+            gap: 10px;
         }
         
         .detail-row:last-child { 
@@ -329,136 +386,263 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         
         .label { 
-            color: #888; 
+            color: #b0b0b0; 
             font-weight: 500;
+            white-space: nowrap;
+        }
+        
+        .label i {
+            color: #ffb700;
+            margin-right: 5px;
         }
         
         .value { 
-            color: #1a1a2e; 
+            color: #ffffff; 
             font-weight: 600; 
+            text-align: right;
+            word-break: break-word;
         }
         
         .value.highlight {
-            color: #003580;
+            color: #ffb700;
         }
         
+        /* ===== CONTACT BOX (NEW) ===== */
+        .contact-box {
+            background: rgba(74, 144, 226, 0.08);
+            border-left: 4px solid #4a90e2;
+            border: 1px solid rgba(74, 144, 226, 0.2);
+            padding: 14px 16px;
+            border-radius: 10px;
+            margin-bottom: 14px;
+            text-align: left;
+        }
+        
+        .contact-box h4 {
+            color: #4a90e2;
+            font-size: 12px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 700;
+        }
+        
+        .contact-box h4 i {
+            color: #4a90e2;
+            margin-right: 5px;
+        }
+        
+        .contact-box p {
+            font-size: 13px;
+            color: #e0e0e0;
+            margin: 0;
+        }
+        
+        .contact-box a {
+            color: #4a90e2;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 15px;
+        }
+        
+        .contact-box a:hover {
+            color: #ffb700;
+            text-decoration: underline;
+        }
+        
+        .contact-box i.fa-phone {
+            color: #4a90e2;
+            margin-right: 6px;
+        }
+        
+        /* ===== FARE BOX ===== */
+        .fare-box {
+            background: rgba(255, 183, 0, 0.08);
+            border-left: 4px solid #ffb700;
+            border: 1px solid rgba(255, 183, 0, 0.2);
+            padding: 14px 16px;
+            border-radius: 10px;
+            margin-bottom: 16px;
+            text-align: left;
+        }
+        
+        .fare-box h4 {
+            color: #ffb700;
+            font-size: 12px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 700;
+        }
+        
+        .fare-box h4 i {
+            color: #ffb700;
+            margin-right: 5px;
+        }
+        
+        .fare-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 12.5px;
+        }
+        
+        .fare-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .fare-row .fare-label {
+            color: #b0b0b0;
+        }
+        
+        .fare-row .fare-value {
+            font-weight: 600;
+            color: #ffb700;
+        }
+        
+        .fare-divider {
+            border: none;
+            border-top: 1px dashed rgba(255, 183, 0, 0.3);
+            margin: 8px 0;
+        }
+        
+        .fare-row.total-row .fare-label {
+            font-weight: 600;
+            color: #ffb700;
+            font-size: 13px;
+        }
+        
+        .fare-row.total-row .fare-value {
+            color: #4ade80;
+            font-size: 17px;
+            font-weight: 700;
+        }
+        
+        /* ===== REFERENCE BOX ===== */
         .ref-box { 
-            background: #e8f0fe; 
-            border: 2px dashed #003580; 
-            padding: 18px; 
+            background: rgba(255, 183, 0, 0.1);
+            border: 2px dashed rgba(255, 183, 0, 0.5);
+            padding: 14px; 
             border-radius: 14px; 
-            margin-bottom: 25px; 
+            margin-bottom: 20px; 
         }
         
         .ref-box .ref-label {
-            font-size: 11px; 
-            color: #888; 
+            font-size: 10px; 
+            color: #b0b0b0; 
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 1.5px;
             font-weight: 600;
         }
         
         .ref-box .ref-code {
             font-weight: 700; 
-            color: #003580; 
-            font-size: 28px; 
+            color: #ffb700; 
+            font-size: 24px; 
             letter-spacing: 2px;
+            margin-top: 4px;
         }
         
+        /* ===== BUTTONS ===== */
         .btn-container { 
             display: flex; 
             flex-direction: column; 
-            gap: 12px; 
-        }
-        
-        .print-btn { 
-            background: linear-gradient(135deg, #003580, #004d99);
-            color: white; 
-            border: none; 
-            width: 100%; 
-            padding: 16px; 
-            border-radius: 14px; 
-            cursor: pointer; 
-            font-weight: 700; 
-            font-size: 15px; 
-            transition: all 0.3s;
-            font-family: 'Poppins', sans-serif;
-        }
-        
-        .print-btn:hover { 
-            background: linear-gradient(135deg, #00255a, #003580);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0,53,128,0.3);
-        }
-        
-        .print-btn i {
-            margin-right: 8px;
+            gap: 10px; 
         }
         
         .view-btn {
-            background: #28a745;
-            color: white;
+            background: linear-gradient(135deg, #ffb700, #f5a623);
+            color: #0f0022;
             border: none;
             width: 100%;
-            padding: 14px;
-            border-radius: 14px;
+            padding: 13px;
+            border-radius: 12px;
             cursor: pointer;
-            font-weight: 600;
-            font-size: 15px;
+            font-weight: 700;
+            font-size: 14px;
             text-decoration: none;
-            display: block;
-            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
             transition: all 0.3s;
             text-align: center;
             font-family: 'Poppins', sans-serif;
+            box-shadow: 0 4px 15px rgba(255, 183, 0, 0.3);
         }
         
         .view-btn:hover {
-            background: #1e7e34;
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(40,167,69,0.3);
+            box-shadow: 0 8px 25px rgba(255, 183, 0, 0.5);
         }
         
-        .view-btn i {
-            margin-right: 8px;
+        .print-btn { 
+            background: rgba(255, 183, 0, 0.15);
+            color: #ffb700;
+            border: 2px solid rgba(255, 183, 0, 0.4);
+            width: 100%; 
+            padding: 13px; 
+            border-radius: 12px; 
+            cursor: pointer; 
+            font-weight: 600; 
+            font-size: 14px; 
+            transition: all 0.3s;
+            font-family: 'Poppins', sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .print-btn:hover { 
+            background: rgba(255, 183, 0, 0.25);
+            border-color: #ffb700;
+            transform: translateY(-2px);
         }
         
         .home-btn { 
             background: transparent; 
-            color: #003580; 
-            border: 2px solid #003580; 
+            color: #b0b0b0; 
+            border: 2px solid rgba(255, 183, 0, 0.2); 
             width: 100%; 
-            padding: 14px; 
-            border-radius: 14px; 
+            padding: 13px; 
+            border-radius: 12px; 
             cursor: pointer; 
             font-weight: 600; 
-            font-size: 15px; 
+            font-size: 14px; 
             text-decoration: none; 
-            display: block; 
-            box-sizing: border-box; 
+            display: flex; 
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
             transition: all 0.3s;
             text-align: center; 
             font-family: 'Poppins', sans-serif;
         }
         
         .home-btn:hover { 
-            background: #e8f0fe;
+            color: #ffb700;
+            border-color: #ffb700;
             transform: translateY(-2px);
         }
         
-        .home-btn i {
-            margin-right: 8px;
-        }
-        
+        /* ===== RESPONSIVE ===== */
         @media (max-width: 480px) {
             .receipt {
                 padding: 25px 20px;
             }
             .ref-box .ref-code {
-                font-size: 22px;
+                font-size: 20px;
+            }
+            .receipt h3 {
+                font-size: 18px;
+            }
+            .detail-row {
+                font-size: 12px;
             }
         }
         
+        /* ===== PRINT ===== */
         @media print { 
             .btn-container, header, .main-wrapper .icon { 
                 display: none !important; 
@@ -470,13 +654,28 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             body { 
                 background: white !important; 
                 padding: 0; 
+                color: #333;
             } 
             .receipt { 
                 box-shadow: none !important; 
                 border: 1px solid #ddd; 
                 margin: auto; 
-                border-top: 8px solid #003580;
+                background: white !important;
+                color: #333 !important;
+                border-top: 6px solid #ffb700;
             } 
+            .receipt h3 { color: #003580 !important; }
+            .value { color: #333 !important; }
+            .label { color: #666 !important; }
+            .ref-box { background: #f8f9fa !important; border-color: #003580 !important; }
+            .ref-box .ref-code { color: #003580 !important; }
+            .receipt-details { background: #f8f9fa !important; }
+            .contact-box { background: #f0f6ff !important; border-color: #003580 !important; }
+            .contact-box h4 { color: #003580 !important; }
+            .contact-box a { color: #003580 !important; }
+            .fare-box { background: #f8f9fa !important; }
+            .fare-row .fare-value { color: #003580 !important; }
+            .fare-row.total-row .fare-value { color: #28a745 !important; }
         }
     </style>
 </head>
@@ -498,13 +697,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <i class="fas fa-check"></i> BOOKING CONFIRMED
             </div>
             
+            <!-- ===== JOURNEY DETAILS ===== -->
             <div class="receipt-details">
                 <div class="detail-row">
                     <span class="label"><i class="fas fa-calendar-day"></i> Journey Date</span>
                     <span class="value"><?= htmlspecialchars($date); ?></span>
                 </div>
                 <div class="detail-row">
-                    <span class="label"><i class="fas fa-chair"></i> Seat Numbers</span>
+                    <span class="label"><i class="fas fa-chair"></i> Seats</span>
                     <span class="value highlight"><?= htmlspecialchars($seats); ?></span>
                 </div>
                 <div class="detail-row">
@@ -517,15 +717,57 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 </div>
                 <div class="detail-row">
                     <span class="label"><i class="fas fa-envelope"></i> Email</span>
-                    <span class="value" style="font-size:12px;"><?= htmlspecialchars($customer_email); ?></span>
+                    <span class="value" style="font-size:11px;"><?= htmlspecialchars($customer_email); ?></span>
                 </div>
             </div>
+            
+            <!-- ===== CONTACT BOX (NEW) ===== -->
+            <?php if (!empty($receipt_bus_contact) && $receipt_bus_contact !== 'N/A'): ?>
+            <div class="contact-box">
+                <h4><i class="fas fa-phone-alt"></i> Contact Bus</h4>
+                <p>
+                    <i class="fas fa-phone"></i> 
+                    <a href="tel:<?= htmlspecialchars($receipt_bus_contact) ?>">
+                        <?= htmlspecialchars($receipt_bus_contact) ?>
+                    </a>
+                </p>
+                <p style="font-size:11px; color:#888; margin-top:5px;">
+                    Call this number for any inquiries about your journey
+                </p>
+            </div>
+            <?php endif; ?>
+            
+            <!-- ===== FARE BREAKDOWN ===== -->
+            <?php if ($distance_km > 0): ?>
+            <div class="fare-box">
+                <h4><i class="fas fa-calculator"></i> Fare Breakdown</h4>
+                <div class="fare-row">
+                    <span class="fare-label">Distance:</span>
+                    <span class="fare-value"><?= number_format($distance_km, 1) ?> km</span>
+                </div>
+                <div class="fare-row">
+                    <span class="fare-label">Fare per seat:</span>
+                    <span class="fare-value">Rs. <?= number_format($fare_per_seat, 2) ?></span>
+                </div>
+                <div class="fare-row">
+                    <span class="fare-label">Seats (<?= $seat_count ?>):</span>
+                    <span class="fare-value">× <?= $seat_count ?></span>
+                </div>
+                <hr class="fare-divider">
+                <div class="fare-row total-row">
+                    <span class="fare-label">Total Fare:</span>
+                    <span class="fare-value">Rs. <?= number_format($total_fare, 2) ?></span>
+                </div>
+            </div>
+            <?php endif; ?>
 
+            <!-- ===== REFERENCE CODE ===== -->
             <div class="ref-box">
                 <div class="ref-label">REFERENCE CODE</div>
                 <div class="ref-code"><?= htmlspecialchars($ref_code); ?></div>
             </div>
 
+            <!-- ===== BUTTONS ===== -->
             <div class="btn-container">
                 <a href="booking_details.php?ref=<?= $ref_code ?>" class="view-btn">
                     <i class="fas fa-eye"></i> View Booking Details
@@ -534,7 +776,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     <i class="fas fa-print"></i> Print Receipt
                 </button>
                 <a href="dashboard.php" class="home-btn">
-                    <i class="fas fa-home"></i> Go to Dashboard
+                    <i class="fas fa-home"></i> Back to Dashboard
                 </a>
             </div>
             

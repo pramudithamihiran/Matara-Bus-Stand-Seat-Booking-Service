@@ -1,8 +1,9 @@
 <?php
 include 'config.php';
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once 'tab_auth.php';
+
+// ============ TAB AUTHENTICATION CHECK ============
+requireTabAuth('admin_login.php');
 
 // Check if conductor is logged in
 if (!isset($_SESSION['conductor_logged_in']) || $_SESSION['conductor_logged_in'] !== true) {
@@ -14,7 +15,19 @@ $bus_id = $_SESSION['bus_id'];
 $bus_name = $_SESSION['bus_name'];
 $conductor_name = $_SESSION['conductor_name'];
 $today = date('Y-m-d');
-$success_msg = '';
+
+// ============ AUTO RESET RIDE STATUS FOR NEW DAY ============
+// If ride_status is 'completed' but last_ride_date is not today, reset to 'pending'
+$reset_sql = "UPDATE buses 
+              SET ride_status = 'pending', 
+                  ride_completed_date = NULL 
+              WHERE id = ? 
+              AND ride_status = 'completed' 
+              AND (last_ride_date IS NULL OR last_ride_date != ?)";
+$reset_stmt = $conn->prepare($reset_sql);
+$reset_stmt->bind_param("is", $bus_id, $today);
+$reset_stmt->execute();
+$reset_stmt->close();
 
 // ============ GET BUS STATUS ============
 $status_sql = "SELECT status, ride_status FROM buses WHERE id = ?";
@@ -25,7 +38,7 @@ $status_result = $status_stmt->get_result();
 $bus_status = $status_result->fetch_assoc();
 $status_stmt->close();
 
-// ============ GET TODAY'S BOOKINGS (status column නැතිව) ============
+// ============ GET TODAY'S BOOKINGS ============
 $sql = "SELECT bk.*, b.bus_name, b.bus_number, b.departure_time 
         FROM bookings bk 
         JOIN buses b ON bk.bus_id = b.id 
@@ -38,7 +51,6 @@ $stmt->execute();
 $result = $stmt->get_result();
 $total_bookings = $result->num_rows;
 
-// Calculate total seats
 $total_seats = 0;
 $bookings_data = [];
 if ($result && $result->num_rows > 0) {
@@ -61,19 +73,20 @@ if ($result && $result->num_rows > 0) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        
         body { 
             font-family: 'Poppins', sans-serif; 
-            background: #f0f4f8; 
-            padding-top: 80px;
+            background: linear-gradient(135deg, #0f0022 0%, #1a0033 50%, #0a0018 100%) !important;
+            background-attachment: fixed !important;
+            padding-top: 130px;
             padding-bottom: 40px;
+            min-height: 100vh;
+            color: #e0e0e0;
         }
         
-        .container { 
-            max-width: 1100px; 
-            margin: 20px auto; 
-            padding: 0 15px; 
-        }
+        .container { max-width: 1100px; margin: 20px auto; padding: 0 15px; }
         
+        /* ===== DASHBOARD HEADER ===== */
         .dash-header {
             display: flex;
             justify-content: space-between;
@@ -83,29 +96,27 @@ if ($result && $result->num_rows > 0) {
             gap: 15px;
         }
         
-        .dash-header h2 {
-            color: #003580;
-            font-weight: 700;
-            font-size: 24px;
+        .dash-header h2 { 
+            color: #ffffff; 
+            font-weight: 700; 
+            font-size: 24px; 
         }
         
-        .dash-header h2 i {
-            margin-right: 10px;
-        }
+        .dash-header h2 i { margin-right: 10px; color: #ffb700; }
         
         .dash-header .badge {
-            background: #e8f0fe;
+            background: rgba(255, 183, 0, 0.1);
+            border: 1px solid rgba(255, 183, 0, 0.3);
             padding: 8px 18px;
             border-radius: 30px;
             font-size: 14px;
-            color: #003580;
-            font-weight: 500;
+            color: #ffb700;
+            font-weight: 600;
         }
         
-        .dash-header .badge i {
-            margin-right: 6px;
-        }
+        .dash-header .badge i { margin-right: 6px; }
         
+        /* ===== STATS GRID ===== */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -114,47 +125,39 @@ if ($result && $result->num_rows > 0) {
         }
         
         .stat-card {
-            background: white;
+            background: rgba(22, 22, 22, 0.85);
+            backdrop-filter: blur(20px);
             padding: 25px 20px;
             border-radius: 16px;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 183, 0, 0.15);
             text-align: center;
             transition: all 0.3s ease;
         }
         
-        .stat-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        .stat-card:hover { 
+            transform: translateY(-5px); 
+            box-shadow: 0 15px 40px rgba(255, 183, 0, 0.15);
+            border-color: rgba(255, 183, 0, 0.4);
         }
         
-        .stat-card i {
-            font-size: 32px;
-            color: #003580;
-            margin-bottom: 10px;
-        }
+        .stat-card i { font-size: 32px; color: #ffb700; margin-bottom: 10px; }
+        .stat-card .number { font-size: 28px; font-weight: 700; color: #ffffff; }
+        .stat-card .label { font-size: 13px; color: #b0b0b0; font-weight: 500; }
         
-        .stat-card .number {
-            font-size: 28px;
-            font-weight: 700;
-            color: #1a1a2e;
-        }
+        .stat-card.green i { color: #4ade80; }
+        .stat-card.blue i { color: #60a5fa; }
+        .stat-card.orange i { color: #fb923c; }
+        .stat-card.purple i { color: #c084fc; }
         
-        .stat-card .label {
-            font-size: 13px;
-            color: #888;
-            font-weight: 500;
-        }
-        
-        .stat-card.green i { color: #28a745; }
-        .stat-card.blue i { color: #007bff; }
-        .stat-card.orange i { color: #fd7e14; }
-        .stat-card.purple i { color: #6f42c1; }
-        
+        /* ===== STATUS BOX ===== */
         .status-box {
-            background: white;
-            padding: 20px 25px;
+            background: rgba(22, 22, 22, 0.85);
+            backdrop-filter: blur(20px);
+            padding: 22px 25px;
             border-radius: 16px;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 183, 0, 0.15);
             margin-bottom: 25px;
             display: flex;
             justify-content: space-between;
@@ -163,16 +166,8 @@ if ($result && $result->num_rows > 0) {
             gap: 15px;
         }
         
-        .status-box .status-label {
-            font-weight: 600;
-            color: #333;
-            font-size: 14px;
-        }
-        
-        .status-box .status-label i {
-            color: #003580;
-            margin-right: 5px;
-        }
+        .status-box .status-label { font-weight: 600; color: #c9c9c9; font-size: 14px; }
+        .status-box .status-label i { color: #ffb700; margin-right: 5px; }
         
         .status-badge {
             padding: 6px 20px;
@@ -182,180 +177,201 @@ if ($result && $result->num_rows > 0) {
             display: inline-block;
         }
         
-        .status-pending { background: #fff3cd; color: #856404; }
-        .status-active { background: #d4edda; color: #155724; }
-        .status-completed { background: #cce5ff; color: #004085; }
+        .status-pending { 
+            background: rgba(255, 183, 0, 0.15);
+            color: #ffb700;
+            border: 1px solid rgba(255, 183, 0, 0.3);
+        }
         
+        .status-active { 
+            background: rgba(40, 167, 69, 0.15);
+            color: #4ade80;
+            border: 1px solid rgba(40, 167, 69, 0.3);
+        }
+        
+        .status-completed { 
+            background: rgba(0, 123, 255, 0.15);
+            color: #60a5fa;
+            border: 1px solid rgba(0, 123, 255, 0.3);
+        }
+        
+        /* ===== BUTTONS ===== */
         .btn-ride {
-            background: #28a745;
+            background: linear-gradient(135deg, #28a745, #1e7e34);
             color: white;
-            padding: 10px 25px;
+            padding: 12px 28px;
             border: none;
             border-radius: 10px;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
             transition: all 0.3s;
             font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
         }
         
-        .btn-ride:hover {
-            background: #1e7e34;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(40,167,69,0.3);
+        .btn-ride:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.5);
         }
         
         .btn-complete {
-            background: #007bff;
+            background: linear-gradient(135deg, #007bff, #0056b3);
             color: white;
-            padding: 10px 25px;
+            padding: 12px 28px;
             border: none;
             border-radius: 10px;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
             transition: all 0.3s;
             font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
         }
         
-        .btn-complete:hover {
-            background: #0056b3;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,123,255,0.3);
+        .btn-complete:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 8px 25px rgba(0, 123, 255, 0.5);
         }
         
-        .btn-ride i, .btn-complete i {
-            margin-right: 6px;
+        .btn-ride i, .btn-complete i { margin-right: 6px; }
+        
+        .ride-completed-text {
+            color: #4ade80;
+            font-weight: 700;
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
         
+        /* ===== BOOKING CARD ===== */
         .booking-card {
-            background: white;
+            background: rgba(22, 22, 22, 0.85);
+            backdrop-filter: blur(20px);
             border-radius: 16px;
             padding: 20px 25px;
             margin-bottom: 15px;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 183, 0, 0.15);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-left: 5px solid #28a745;
+            border-left: 5px solid #ffb700;
             transition: all 0.3s ease;
         }
         
-        .booking-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        .booking-card:hover { 
+            transform: translateY(-3px); 
+            box-shadow: 0 15px 40px rgba(255, 183, 0, 0.15);
+            border-color: rgba(255, 183, 0, 0.4);
         }
         
-        .booking-card .info {
-            flex: 1;
+        .booking-card .info { flex: 1; }
+        
+        .booking-card .info .ref { font-size: 12px; color: #888; font-weight: 500; }
+        .booking-card .info .ref strong { color: #ffb700; }
+        
+        .booking-card .info h4 { 
+            font-size: 16px; 
+            font-weight: 700; 
+            color: #ffffff; 
+            margin: 5px 0; 
         }
         
-        .booking-card .info .ref {
-            font-size: 12px;
-            color: #888;
-            font-weight: 500;
+        .booking-card .info h4 i { color: #ffb700; margin-right: 6px; }
+        
+        .booking-card .info .details { 
+            font-size: 13px; 
+            color: #b0b0b0; 
+            margin: 3px 0; 
         }
         
-        .booking-card .info .ref strong {
-            color: #003580;
+        .booking-card .info .details i { 
+            width: 20px; 
+            color: #ffb700; 
         }
         
-        .booking-card .info h4 {
-            font-size: 16px;
-            font-weight: 700;
-            color: #1a1a2e;
-            margin: 3px 0;
-        }
-        
-        .booking-card .info h4 i {
-            color: #003580;
-            margin-right: 6px;
-        }
-        
-        .booking-card .info .details {
-            font-size: 13px;
-            color: #666;
-            margin: 2px 0;
-        }
-        
-        .booking-card .info .details i {
-            width: 20px;
-            color: #003580;
-        }
-        
-        .booking-card .info .seats {
-            margin-top: 5px;
-        }
+        .booking-card .info .seats { margin-top: 8px; }
         
         .booking-card .info .seat-badge {
-            background: #e8f0fe;
-            color: #003580;
-            padding: 2px 12px;
+            background: rgba(255, 183, 0, 0.15);
+            color: #ffb700;
+            padding: 3px 14px;
             border-radius: 20px;
             font-size: 12px;
             font-weight: 600;
             margin: 2px 3px;
             display: inline-block;
+            border: 1px solid rgba(255, 183, 0, 0.3);
         }
         
-        .booking-card .status {
-            text-align: right;
-        }
+        .booking-card .status { text-align: right; }
         
         .booking-card .status .badge {
             padding: 5px 16px;
             border-radius: 30px;
             font-size: 11px;
-            font-weight: 600;
+            font-weight: 700;
             text-transform: uppercase;
             display: inline-block;
+            letter-spacing: 0.5px;
         }
         
-        .badge-confirmed { background: #d4edda; color: #155724; }
-        .badge-pending { background: #fff3cd; color: #856404; }
+        .badge-confirmed { 
+            background: rgba(40, 167, 69, 0.15);
+            color: #4ade80;
+            border: 1px solid rgba(40, 167, 69, 0.3);
+        }
         
+        .badge-pending { 
+            background: rgba(255, 183, 0, 0.15);
+            color: #ffb700;
+            border: 1px solid rgba(255, 183, 0, 0.3);
+        }
+        
+        /* ===== NO BOOKINGS ===== */
         .no-bookings {
             text-align: center;
             padding: 60px 20px;
-            background: white;
+            background: rgba(22, 22, 22, 0.85);
+            backdrop-filter: blur(20px);
             border-radius: 16px;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 183, 0, 0.15);
         }
         
-        .no-bookings i {
-            font-size: 50px;
-            color: #ddd;
-            margin-bottom: 15px;
+        .no-bookings i { 
+            font-size: 60px; 
+            color: rgba(255, 183, 0, 0.3); 
+            margin-bottom: 15px; 
         }
         
-        .no-bookings h3 {
-            color: #333;
-            margin-bottom: 5px;
-        }
+        .no-bookings h3 { color: #ffffff; margin-bottom: 5px; }
+        .no-bookings p { color: #b0b0b0; font-size: 14px; }
         
-        .no-bookings p {
-            color: #888;
-            font-size: 14px;
-        }
-        
+        /* ===== LOGOUT BUTTON ===== */
         .btn-logout {
-            background: #dc3545;
+            background: linear-gradient(135deg, #dc3545, #b91c1c);
             color: white;
-            padding: 8px 20px;
-            border-radius: 8px;
+            padding: 10px 22px;
+            border-radius: 10px;
             text-decoration: none;
-            font-weight: 600;
+            font-weight: 700;
             transition: all 0.3s;
             display: inline-block;
+            font-size: 13px;
+            box-shadow: 0 4px 15px rgba(220, 53, 69, 0.3);
         }
         
-        .btn-logout:hover {
-            background: #c82333;
-            transform: translateY(-2px);
+        .btn-logout:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 8px 25px rgba(220, 53, 69, 0.5);
         }
         
-        .btn-logout i {
-            margin-right: 6px;
-        }
+        .btn-logout i { margin-right: 6px; }
         
+        /* ===== ALERT ===== */
         .alert {
             padding: 14px 20px;
             border-radius: 12px;
@@ -373,42 +389,46 @@ if ($result && $result->num_rows > 0) {
         }
         
         .alert-success {
-            background: #d4edda;
-            color: #155724;
+            background: rgba(40, 167, 69, 0.15);
+            color: #4ade80;
             border-left: 4px solid #28a745;
+            border: 1px solid rgba(40, 167, 69, 0.3);
         }
         
-        .alert-success i {
-            color: #28a745;
+        .alert-success i { color: #28a745; }
+        
+        /* ===== SECTION TITLE ===== */
+        .section-title {
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         
+        .section-title i { color: #ffb700; }
+        
+        .section-title .count {
+            font-size: 13px;
+            color: #b0b0b0;
+            font-weight: 400;
+        }
+        
+        /* ===== RESPONSIVE ===== */
         @media (max-width: 768px) {
-            .booking-card {
-                flex-direction: column;
-                text-align: center;
-            }
-            .booking-card .status {
-                text-align: center;
-                margin-top: 10px;
-                width: 100%;
-            }
-            .status-box {
-                flex-direction: column;
-                text-align: center;
-            }
-            .dash-header {
-                flex-direction: column;
-                text-align: center;
-            }
-            .stats-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
+            .booking-card { flex-direction: column; text-align: center; }
+            .booking-card .status { text-align: center; margin-top: 10px; width: 100%; }
+            .status-box { flex-direction: column; text-align: center; }
+            .dash-header { flex-direction: column; text-align: center; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
         }
         
         @media (max-width: 480px) {
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
+            body { padding-top: 120px; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .dash-header h2 { font-size: 20px; }
         }
     </style>
 </head>
@@ -425,7 +445,7 @@ if ($result && $result->num_rows > 0) {
             <span class="badge">
                 <i class="fas fa-bus"></i> <?= htmlspecialchars($bus_name) ?>
             </span>
-            <span class="badge" style="background:#e8f0fe;margin-left:10px;">
+            <span class="badge" style="background:rgba(255,183,0,0.15);margin-left:10px;">
                 <i class="fas fa-user"></i> <?= htmlspecialchars($conductor_name) ?>
             </span>
             <a href="logout.php" class="btn-logout" style="margin-left:10px;">
@@ -498,7 +518,7 @@ if ($result && $result->num_rows > 0) {
                     </button>
                 </form>
             <?php else: ?>
-                <span style="color:#28a745;font-weight:600;">
+                <span class="ride-completed-text">
                     <i class="fas fa-check-circle"></i> Ride Completed
                 </span>
             <?php endif; ?>
@@ -506,17 +526,14 @@ if ($result && $result->num_rows > 0) {
     </div>
 
     <!-- ===== TODAY'S BOOKINGS ===== -->
-    <h3 style="margin-bottom:15px;color:#003580;">
+    <h3 class="section-title">
         <i class="fas fa-users"></i> Today's Passengers
-        <span style="font-size:13px;color:#888;font-weight:400;margin-left:10px;">
-            (<?= $total_bookings ?> bookings)
-        </span>
+        <span class="count">(<?= $total_bookings ?> bookings)</span>
     </h3>
     
     <?php if (!empty($bookings_data)): ?>
         <?php foreach($bookings_data as $row): 
             $seat_array = explode(',', $row['seat_numbers']);
-            $status = 'confirmed'; // Default status since column doesn't exist
         ?>
             <div class="booking-card">
                 <div class="info">
@@ -525,12 +542,7 @@ if ($result && $result->num_rows > 0) {
                     </div>
                     <h4><i class="fas fa-user"></i> <?= htmlspecialchars($row['customer_name'] ?? 'N/A') ?></h4>
                     <div class="details">
-                        <i class="fas fa-envelope"></i> <?= htmlspecialchars($row['customer_email']) ?>
-                    </div>
-                    <div class="details">
-                        <i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($row['pickup_location']) ?> 
-                        <i class="fas fa-arrow-right" style="margin:0 5px;color:#ccc;"></i> 
-                        <?= htmlspecialchars($row['dropoff_location'] ?? $row['drop_location'] ?? 'N/A') ?>
+                        <i class="fas fa-envelope"></i> <?= htmlspecialchars($row['customer_email'] ?? 'N/A') ?>
                     </div>
                     <div class="details">
                         <i class="fas fa-clock"></i> <?= $row['departure_time'] ?>

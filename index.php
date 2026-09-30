@@ -1,8 +1,6 @@
 <?php
 include 'config.php';
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once 'tab_auth.php';
 
 // ============ GET STATISTICS ============
 $total_buses_sql = "SELECT COUNT(*) as total FROM buses WHERE status = 'active'";
@@ -62,26 +60,31 @@ $latest_result = $conn->query($latest_sql);
     
     <style>
         :root {
-            --primary: #003580;
+            --primary: #ffb700;
             --accent: #ffb700;
-            --dark: #00255a;
-            --text-muted: #6c757d;
-            --light-bg: #f8f9fa;
+            --dark: #0f0022;
+            --purple: #1a0033;
+            --text-muted: #b0b0b0;
+            --glass-bg: rgba(22, 22, 22, 0.85);
+            --glass-border: rgba(255, 183, 0, 0.15);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        
         body {
             font-family: 'Poppins', sans-serif;
-            background-color: var(--light-bg);
-            color: #333;
+            background: linear-gradient(135deg, #0f0022 0%, #1a0033 50%, #0a0018 100%);
+            background-attachment: fixed;
+            color: #e0e0e0;
             padding-top: 70px;
+            min-height: 100vh;
         }
 
         /* ===== HERO SECTION ===== */
         .hero-section {
             position: relative;
             min-height: 80vh;
-            background: linear-gradient(135deg, rgba(0,37,90,0.75), rgba(0,25,90,0.85)), 
+            background: linear-gradient(135deg, rgba(15,0,34,0.85), rgba(26,0,51,0.9)), 
                         url('images/parevi_duwa.jpg') no-repeat center center/cover;
             display: flex;
             align-items: center;
@@ -98,7 +101,7 @@ $latest_result = $conn->query($latest_sql);
 
         .hero-content .hero-badge {
             display: inline-block;
-            background: rgba(255,183,0,0.2);
+            background: rgba(255,183,0,0.15);
             color: var(--accent);
             padding: 6px 20px;
             border-radius: 30px;
@@ -108,21 +111,17 @@ $latest_result = $conn->query($latest_sql);
             border: 1px solid rgba(255,183,0,0.3);
         }
 
-        .hero-content .hero-badge i {
-            margin-right: 6px;
-        }
+        .hero-content .hero-badge i { margin-right: 6px; }
 
         .hero-content h1 {
             font-size: 3.5rem;
             font-weight: 700;
             margin-bottom: 20px;
             letter-spacing: 1px;
-            text-shadow: 0 3px 15px rgba(0,0,0,0.4);
+            text-shadow: 0 3px 15px rgba(0,0,0,0.5);
         }
 
-        .hero-content h1 .highlight {
-            color: var(--accent);
-        }
+        .hero-content h1 .highlight { color: var(--accent); }
 
         .hero-content p {
             font-size: 1.2rem;
@@ -142,11 +141,11 @@ $latest_result = $conn->query($latest_sql);
         }
 
         .btn-primary {
-            background: var(--accent);
+            background: linear-gradient(135deg, #ffb700, #f5a623);
             color: var(--dark);
             padding: 16px 40px;
             font-size: 1.1rem;
-            font-weight: 600;
+            font-weight: 700;
             text-decoration: none;
             border-radius: 50px;
             box-shadow: 0 8px 30px rgba(255, 183, 0, 0.4);
@@ -158,17 +157,19 @@ $latest_result = $conn->query($latest_sql);
 
         .btn-primary:hover {
             background: white;
-            color: var(--primary);
+            color: var(--dark);
             transform: translateY(-3px);
             box-shadow: 0 12px 40px rgba(255, 255, 255, 0.3);
         }
 
         /* ===== STATS SECTION ===== */
         .stats-section {
-            background: white;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
             padding: 40px 20px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.04);
-            border-bottom: 1px solid #eee;
+            border-top: 1px solid var(--glass-border);
+            border-bottom: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         }
 
         .stats-container {
@@ -183,7 +184,7 @@ $latest_result = $conn->query($latest_sql);
         .stat-item .number {
             font-size: 2.5rem;
             font-weight: 700;
-            color: var(--primary);
+            color: var(--accent);
         }
 
         .stat-item .number i {
@@ -207,15 +208,13 @@ $latest_result = $conn->query($latest_sql);
         }
 
         .section-title {
-            color: var(--dark);
+            color: #ffffff;
             font-size: 2.2rem;
             font-weight: 700;
             margin-bottom: 10px;
         }
 
-        .section-title .highlight {
-            color: var(--accent);
-        }
+        .section-title .highlight { color: var(--accent); }
 
         .section-subtitle {
             color: var(--text-muted);
@@ -230,25 +229,26 @@ $latest_result = $conn->query($latest_sql);
         }
 
         .feature-card {
-            background: white;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
             padding: 40px 30px;
             border-radius: 20px;
-            box-shadow: 0 5px 25px rgba(0,0,0,0.04);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             transition: all 0.4s ease;
-            border: 1px solid #f0f0f0;
+            border: 1px solid var(--glass-border);
         }
 
         .feature-card:hover {
             transform: translateY(-10px);
-            box-shadow: 0 20px 50px rgba(0, 53, 128, 0.08);
-            border-color: rgba(0, 53, 128, 0.1);
+            box-shadow: 0 20px 50px rgba(255, 183, 0, 0.15);
+            border-color: rgba(255, 183, 0, 0.4);
         }
 
         .feature-card .icon-wrapper {
             width: 70px;
             height: 70px;
-            background: rgba(0, 53, 128, 0.06);
-            color: var(--primary);
+            background: rgba(255, 183, 0, 0.15);
+            color: var(--accent);
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -256,16 +256,18 @@ $latest_result = $conn->query($latest_sql);
             font-size: 1.8rem;
             margin: 0 auto 20px;
             transition: 0.3s;
+            border: 1px solid rgba(255, 183, 0, 0.3);
         }
 
         .feature-card:hover .icon-wrapper {
-            background: var(--primary);
-            color: white;
+            background: linear-gradient(135deg, #ffb700, #f5a623);
+            color: var(--dark);
+            transform: scale(1.1);
         }
 
         .feature-card h3 {
             font-size: 1.2rem;
-            color: var(--dark);
+            color: #ffffff;
             margin-bottom: 10px;
             font-weight: 600;
         }
@@ -278,7 +280,7 @@ $latest_result = $conn->query($latest_sql);
 
         /* ===== STATISTICS & CHART SECTION ===== */
         .stats-chart-section {
-            background: white;
+            background: transparent;
             padding: 60px 20px;
         }
 
@@ -292,14 +294,16 @@ $latest_result = $conn->query($latest_sql);
         }
 
         .chart-box {
-            background: #f8faff;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
             padding: 30px;
             border-radius: 20px;
-            border: 1px solid #eef2f7;
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         }
 
         .chart-box h3 {
-            color: var(--primary);
+            color: #ffffff;
             font-size: 18px;
             font-weight: 600;
             margin-bottom: 20px;
@@ -323,17 +327,25 @@ $latest_result = $conn->query($latest_sql);
         }
 
         .stats-info .stat-card {
-            background: #f8faff;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
             padding: 20px;
             border-radius: 14px;
             text-align: center;
-            border: 1px solid #eef2f7;
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            transition: all 0.3s;
+        }
+
+        .stats-info .stat-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(255, 183, 0, 0.4);
         }
 
         .stats-info .stat-card .number {
             font-size: 24px;
             font-weight: 700;
-            color: var(--primary);
+            color: var(--accent);
         }
 
         .stats-info .stat-card .label {
@@ -344,13 +356,13 @@ $latest_result = $conn->query($latest_sql);
         .stats-info .stat-card .route-name {
             font-size: 13px;
             font-weight: 600;
-            color: var(--dark);
+            color: #ffffff;
             margin-top: 5px;
         }
 
         /* ===== LATEST BOOKINGS ===== */
         .latest-section {
-            background: var(--light-bg);
+            background: transparent;
             padding: 60px 20px;
         }
 
@@ -371,16 +383,20 @@ $latest_result = $conn->query($latest_sql);
         }
 
         .latest-card {
-            background: white;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
             padding: 20px 25px;
             border-radius: 14px;
             border-left: 4px solid var(--accent);
+            border: 1px solid var(--glass-border);
             transition: 0.3s;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         }
 
         .latest-card:hover {
-            background: #f0f4f8;
             transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(255, 183, 0, 0.15);
+            border-color: rgba(255, 183, 0, 0.4);
         }
 
         .latest-card .ref {
@@ -389,12 +405,12 @@ $latest_result = $conn->query($latest_sql);
         }
 
         .latest-card .ref strong {
-            color: var(--primary);
+            color: var(--accent);
         }
 
         .latest-card h4 {
             font-size: 16px;
-            color: var(--dark);
+            color: #ffffff;
             margin: 5px 0;
         }
 
@@ -406,12 +422,13 @@ $latest_result = $conn->query($latest_sql);
 
         .latest-card .seat-badge {
             display: inline-block;
-            background: var(--primary);
-            color: white;
+            background: rgba(255, 183, 0, 0.15);
+            color: var(--accent);
             padding: 2px 12px;
             border-radius: 20px;
             font-size: 12px;
             font-weight: 600;
+            border: 1px solid rgba(255, 183, 0, 0.3);
         }
 
         .no-data {
@@ -436,12 +453,19 @@ $latest_result = $conn->query($latest_sql);
         }
 
         .testimonial-card {
-            background: white;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
             padding: 30px;
             border-radius: 16px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.04);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             text-align: left;
-            border: 1px solid #f0f0f0;
+            border: 1px solid var(--glass-border);
+            transition: 0.3s;
+        }
+
+        .testimonial-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(255, 183, 0, 0.4);
         }
 
         .testimonial-card .stars {
@@ -451,14 +475,14 @@ $latest_result = $conn->query($latest_sql);
 
         .testimonial-card p {
             font-size: 14px;
-            color: #555;
+            color: #d0d0d0;
             line-height: 1.7;
         }
 
         .testimonial-card .author {
             margin-top: 12px;
             font-weight: 600;
-            color: var(--dark);
+            color: #ffffff;
             font-size: 14px;
         }
 
@@ -557,7 +581,7 @@ $latest_result = $conn->query($latest_sql);
         <p>The safest, fastest and most convenient way to reserve your highway and long-distance journey seats in Sri Lanka.</p>
         <div class="hero-buttons">
             <a href="dashboard.php" class="btn-primary">
-                <i class="fas fa-compass"></i> Explore Routes
+                <i class="fas fa-compass"></i> Book Your Seat
             </a>
         </div>
     </div>
@@ -601,7 +625,8 @@ $latest_result = $conn->query($latest_sql);
         <div class="stats-info">
             <?php if (!empty($top_routes)): ?>
                 <?php 
-                $colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12'];
+                // ✅ වෙනස් පාට 4ක් - Same as chart colors
+                $colors = ['#ffb700', '#4a90e2', '#28a745', '#e74c3c'];
                 foreach($top_routes as $index => $route): 
                 ?>
                     <div class="stat-card">
@@ -669,7 +694,7 @@ $latest_result = $conn->query($latest_sql);
                         <div class="ref">
                             <i class="fas fa-qrcode"></i> Ref: <strong><?= htmlspecialchars($row['ref_code'] ?? 'N/A') ?></strong>
                         </div>
-                        <h4><i class="fas fa-bus" style="color:var(--primary);"></i> <?= htmlspecialchars($row['bus_name'] ?? 'N/A') ?></h4>
+                        <h4><i class="fas fa-bus" style="color:var(--accent);"></i> <?= htmlspecialchars($row['bus_name'] ?? 'N/A') ?></h4>
                         <p><i class="fas fa-calendar-day"></i> <?= isset($row['journey_date']) ? date('d M Y', strtotime($row['journey_date'])) : 'N/A' ?></p>
                         <p>
                             <i class="fas fa-chair"></i> 
@@ -688,7 +713,7 @@ $latest_result = $conn->query($latest_sql);
             </div>
         <?php else: ?>
             <div class="no-data">
-                <i class="fas fa-ticket-alt" style="font-size:40px; color:#ddd;"></i>
+                <i class="fas fa-ticket-alt" style="font-size:40px; color:rgba(255,183,0,0.3);"></i>
                 <p>No bookings yet. Be the first to book!</p>
             </div>
         <?php endif; ?>
@@ -746,18 +771,38 @@ document.addEventListener('DOMContentLoaded', function() {
     
     const routeLabels = <?= json_encode($route_labels) ?>;
     const routeData = <?= json_encode($route_data) ?>;
-    const routeColors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c'];
+    
+    // ✅ වෙනස් පාට 4ක් - Gold, Blue, Green, Red
+    const routeColors = [
+        '#ffb700',   // Golden Yellow
+        '#4a90e2',   // Blue
+        '#28a745',   // Green
+        '#e74c3c'    // Red
+    ];
+    
+    // Extra colors for more than 4 routes
+    const extraColors = [
+        '#9b59b6',   // Purple
+        '#1abc9c',   // Teal
+        '#e67e22',   // Orange
+        '#34495e'    // Dark Blue
+    ];
+    
+    // Combine all colors
+    const allColors = [...routeColors, ...extraColors];
+    const chartColors = allColors.slice(0, routeLabels.length);
     
     if (routeLabels.length > 0) {
         new Chart(ctx, {
-            type: 'pie',
+            type: 'doughnut',
             data: {
                 labels: routeLabels,
                 datasets: [{
                     data: routeData,
-                    backgroundColor: routeColors.slice(0, routeLabels.length),
-                    borderWidth: 2,
-                    borderColor: '#fff'
+                    backgroundColor: chartColors,
+                    borderWidth: 3,
+                    borderColor: '#0f0022',
+                    hoverOffset: 10
                 }]
             },
             options: {
@@ -767,22 +812,84 @@ document.addEventListener('DOMContentLoaded', function() {
                     legend: {
                         position: 'bottom',
                         labels: {
+                            // ✅ Custom label rendering with WHITE text
+                            color: '#ffffff',
                             font: {
                                 family: 'Poppins',
-                                size: 11
+                                size: 12,
+                                weight: '600'
                             },
                             padding: 15,
-                            usePointStyle: true
+                            usePointStyle: true,
+                            pointStyle: 'circle',
+                            boxWidth: 10,
+                            boxHeight: 10,
+                            // ✅ Force white color on legend text
+                            generateLabels: function(chart) {
+                                const data = chart.data;
+                                if (data.labels.length && data.datasets.length) {
+                                    const dataset = data.datasets[0];
+                                    return data.labels.map((label, i) => {
+                                        const bgColor = Array.isArray(dataset.backgroundColor) 
+                                            ? dataset.backgroundColor[i] 
+                                            : dataset.backgroundColor;
+                                        const isHidden = !chart.getDataVisibility(i);
+                                        return {
+                                            text: label,
+                                            fillStyle: bgColor,
+                                            strokeStyle: bgColor,
+                                            lineWidth: 0,
+                                            pointStyle: 'circle',
+                                            hidden: isHidden,
+                                            index: i,
+                                            // ✅ WHITE font color
+                                            fontColor: '#ffffff'
+                                        };
+                                    });
+                                }
+                                return [];
+                            }
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: '#1a0033',
+                        titleColor: '#ffb700',
+                        bodyColor: '#ffffff',
+                        borderColor: '#ffb700',
+                        borderWidth: 1,
+                        padding: 12,
+                        cornerRadius: 8,
+                        titleFont: {
+                            family: 'Poppins',
+                            size: 13,
+                            weight: 'bold'
+                        },
+                        bodyFont: {
+                            family: 'Poppins',
+                            size: 12
+                        },
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                return ` ${label}: ${value} bookings (${percentage}%)`;
+                            }
                         }
                     }
                 },
-                cutout: '60%'
+                cutout: '60%',
+                animation: {
+                    animateScale: true,
+                    animateRotate: true
+                }
             }
         });
     } else {
         document.querySelector('.chart-container').innerHTML = `
             <div style="text-align:center;padding:40px;color:#888;">
-                <i class="fas fa-chart-pie" style="font-size:40px;color:#ddd;"></i>
+                <i class="fas fa-chart-pie" style="font-size:40px;color:rgba(255,183,0,0.3);"></i>
                 <p style="margin-top:10px;">No booking data available</p>
             </div>
         `;

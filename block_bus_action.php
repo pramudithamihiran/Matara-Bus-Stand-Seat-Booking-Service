@@ -1,16 +1,13 @@
 <?php
 include 'config.php';
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+require_once 'tab_auth.php';
 
-// Check if logged in
+// ============ TAB AUTHENTICATION CHECK ============
+requireTabAuth('admin_login.php');
+
+// Check if logged in (Admin OR Bus Owner)
 if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true) {
     header("Location: admin_login.php");
-    exit();
-}
-
-// Only Super Admin can block buses
-if ($_SESSION['role'] !== 'super_admin') {
-    echo "<script>alert('Access Denied! Only Super Admin can block buses.'); window.location='admin_dashboard.php';</script>";
     exit();
 }
 
@@ -18,21 +15,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['block_bus'])) {
     $bus_id = intval($_POST['bus_id']);
     $start_date = trim($_POST['start_date']);
     $end_date = trim($_POST['end_date']);
+    $reason = trim($_POST['reason'] ?? '');
+    if (empty($reason)) {
+        $reason = 'Blocked';
+    }
     
     // ============ VALIDATION ============
     if (empty($bus_id) || empty($start_date) || empty($end_date)) {
-        echo "<script>alert('Please fill all fields!'); window.location='admin_dashboard.php';</script>";
+        header("Location: admin_dashboard.php?error=missing_fields");
         exit();
     }
     
     $today = date('Y-m-d');
     if ($start_date < $today) {
-        echo "<script>alert('Start date cannot be in the past!'); window.location='admin_dashboard.php';</script>";
+        header("Location: admin_dashboard.php?error=past_date");
         exit();
     }
     
     if ($end_date < $start_date) {
-        echo "<script>alert('End date must be after start date!'); window.location='admin_dashboard.php';</script>";
+        header("Location: admin_dashboard.php?error=invalid_range");
         exit();
     }
     
@@ -44,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['block_bus'])) {
     $check_bus_result = $check_bus_stmt->get_result();
     
     if ($check_bus_result->num_rows == 0) {
-        echo "<script>alert('Bus not found!'); window.location='admin_dashboard.php';</script>";
+        header("Location: admin_dashboard.php?error=bus_not_found");
         exit();
     }
     $check_bus_stmt->close();
@@ -72,10 +73,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['block_bus'])) {
         if ($check_result->num_rows > 0) {
             $skipped++;
         } else {
-            // ============ INSERT USING PREPARED STATEMENT ============
-            $sql = "INSERT INTO bus_unavailable_dates (bus_id, unavailable_date) VALUES (?, ?)";
+            // ============ INSERT WITH REASON ============
+            $sql = "INSERT INTO bus_unavailable_dates (bus_id, unavailable_date, reason) VALUES (?, ?, ?)";
             $stmt = $conn->prepare($sql);
-            $stmt->bind_param("is", $bus_id, $formatted_date);
+            $stmt->bind_param("iss", $bus_id, $formatted_date, $reason);
             if ($stmt->execute()) {
                 $inserted++;
             }
@@ -86,9 +87,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['block_bus'])) {
     
     // ============ REDIRECT WITH MESSAGE ============
     if ($inserted > 0) {
-        echo "<script>alert('$inserted date(s) blocked successfully!" . ($skipped > 0 ? " ($skipped date(s) already blocked)" : "") . "'); window.location='admin_dashboard.php';</script>";
+        $msg = "$inserted date(s) blocked successfully!";
+        if ($skipped > 0) {
+            $msg .= " ($skipped date(s) already blocked)";
+        }
+        header("Location: admin_dashboard.php?success=" . urlencode($msg));
     } else {
-        echo "<script>alert('No new dates were blocked. All dates already blocked or invalid.'); window.location='admin_dashboard.php';</script>";
+        header("Location: admin_dashboard.php?error=no_new_dates");
     }
     exit();
 }

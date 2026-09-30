@@ -1,6 +1,6 @@
 <?php
 include 'config.php';
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+require_once 'tab_auth.php';
 
 $message_status = "";
 $name = $email = $message = "";
@@ -34,7 +34,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         if ($stmt->execute()) {
             $message_status = "success";
-            $name = $email = $message = ""; // Clear form
+            $name = $email = $message = "";
         } else {
             $error = "Database error: Could not save message. Please try again later.";
         }
@@ -53,14 +53,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        
         body { 
             font-family: 'Poppins', sans-serif; 
-            background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
-            padding-top: 80px;
+            background: linear-gradient(135deg, #0f0022 0%, #1a0033 50%, #0a0018 100%) !important;
+            background-attachment: fixed !important;
+            padding-top: 90px;
             padding-bottom: 40px;
             min-height: 100vh;
+            color: #e0e0e0;
         }
         
+        /* ===== PAGE HEADER ===== */
         .page-header {
             text-align: center;
             padding: 30px 20px 10px;
@@ -69,7 +73,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         .page-header h1 {
             font-size: 32px;
             font-weight: 700;
-            color: #003580;
+            color: #ffffff;
         }
         
         .page-header h1 i {
@@ -78,10 +82,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         
         .page-header p {
-            color: #888;
+            color: #b0b0b0;
             font-size: 15px;
         }
         
+        /* ===== CONTACT CONTAINER ===== */
         .contact-container { 
             max-width: 1100px; 
             margin: 20px auto; 
@@ -93,29 +98,34 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         /* ===== INFO SECTION ===== */
         .info-section { 
-            background: linear-gradient(135deg, #003580, #004d99);
+            background: linear-gradient(135deg, #1a0033, #2d1b4e);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 183, 0, 0.2);
             color: white; 
             padding: 40px; 
             border-radius: 24px; 
-            box-shadow: 0 10px 40px rgba(0,53,128,0.25);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(255, 183, 0, 0.1) inset;
         }
         
         .info-section .info-icon {
             font-size: 50px;
             color: #ffb700;
             margin-bottom: 15px;
+            text-shadow: 0 0 20px rgba(255, 183, 0, 0.5);
         }
         
         .info-section h2 {
             font-size: 24px;
             font-weight: 700;
             margin-bottom: 5px;
+            color: #ffffff;
         }
         
         .info-section .subtitle {
             font-size: 14px;
             opacity: 0.8;
             margin-bottom: 25px;
+            color: #d0d0d0;
         }
         
         .info-item {
@@ -123,12 +133,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             align-items: center;
             gap: 15px;
             padding: 12px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
+            border-bottom: 1px solid rgba(255, 183, 0, 0.15);
         }
         
-        .info-item:last-child {
-            border-bottom: none;
-        }
+        .info-item:last-child { border-bottom: none; }
         
         .info-item i {
             font-size: 18px;
@@ -137,33 +145,34 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             text-align: center;
         }
         
-        .info-item .info-text {
-            font-size: 14px;
-        }
+        .info-item .info-text { font-size: 14px; color: #e0e0e0; }
         
         .info-item .info-text strong {
             display: block;
             font-size: 13px;
             opacity: 0.8;
             font-weight: 400;
+            color: #b0b0b0;
         }
         
+        /* ===== SOCIAL LINKS ===== */
         .social-links {
             display: flex;
             gap: 15px;
             margin-top: 25px;
             padding-top: 20px;
-            border-top: 1px solid rgba(255,255,255,0.15);
+            border-top: 1px solid rgba(255, 183, 0, 0.15);
         }
         
         .social-links a {
-            color: white;
+            color: #ffb700;
             font-size: 20px;
             transition: all 0.3s;
             width: 45px;
             height: 45px;
             border-radius: 50%;
-            background: rgba(255,255,255,0.1);
+            background: rgba(255, 183, 0, 0.1);
+            border: 1px solid rgba(255, 183, 0, 0.3);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -171,47 +180,47 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         
         .social-links a:hover {
-            background: #ffb700;
-            color: #003580;
+            background: linear-gradient(135deg, #ffb700, #f5a623);
+            color: #0f0022;
             transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(255, 183, 0, 0.4);
         }
         
         /* ===== FORM SECTION ===== */
         .form-section { 
-            background: white; 
+            background: rgba(22, 22, 22, 0.85);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 183, 0, 0.15);
             padding: 40px; 
             border-radius: 24px; 
-            box-shadow: 0 10px 40px rgba(0,0,0,0.06);
-            border: 1px solid rgba(0,0,0,0.03);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         }
         
         .form-section h2 {
             font-size: 22px;
             font-weight: 700;
-            color: #003580;
+            color: #ffffff;
             margin-bottom: 5px;
         }
         
         .form-section .form-sub {
-            color: #888;
+            color: #b0b0b0;
             font-size: 14px;
             margin-bottom: 25px;
         }
         
-        .form-group {
-            margin-bottom: 18px;
-        }
+        .form-group { margin-bottom: 18px; }
         
         .form-group label {
             display: block;
             font-weight: 600;
             font-size: 13px;
-            color: #333;
+            color: #c9c9c9;
             margin-bottom: 5px;
         }
         
         .form-group label i {
-            color: #003580;
+            color: #ffb700;
             margin-right: 6px;
         }
         
@@ -224,21 +233,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         .form-group textarea { 
             width: 100%; 
             padding: 14px 18px; 
-            border: 2px solid #e0e0e0; 
+            border: 2px solid #2a2a2a; 
             border-radius: 12px; 
             box-sizing: border-box;
             font-family: 'Poppins', sans-serif;
             font-size: 14px;
             transition: all 0.3s ease;
-            background: #fafafa;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            outline: none;
         }
         
         .form-group input:focus,
         .form-group textarea:focus {
-            border-color: #003580;
-            background: #fff;
-            box-shadow: 0 0 0 4px rgba(0,53,128,0.08);
-            outline: none;
+            border-color: #ffb700;
+            background: #0a0a0a;
+            box-shadow: 0 0 0 4px rgba(255, 183, 0, 0.1);
+        }
+        
+        .form-group input::placeholder,
+        .form-group textarea::placeholder {
+            color: #666;
         }
         
         .form-group textarea {
@@ -247,24 +262,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         
         .form-group .error-text {
-            color: #dc3545;
+            color: #ff6b6b;
             font-size: 12px;
             margin-top: 4px;
             display: none;
         }
         
         .form-group.error input,
-        .form-group.error textarea {
-            border-color: #dc3545;
-        }
+        .form-group.error textarea { border-color: #dc3545; }
         
-        .form-group.error .error-text {
-            display: block;
-        }
+        .form-group.error .error-text { display: block; }
         
+        /* ===== SUBMIT BUTTON ===== */
         .btn-submit { 
-            background: linear-gradient(135deg, #003580, #004d99);
-            color: white; 
+            background: linear-gradient(135deg, #ffb700, #f5a623);
+            color: #0f0022; 
             padding: 16px; 
             border: none; 
             border-radius: 12px; 
@@ -276,19 +288,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             font-size: 16px;
             text-transform: uppercase;
             letter-spacing: 1px;
+            box-shadow: 0 4px 15px rgba(255, 183, 0, 0.3);
         }
         
         .btn-submit:hover { 
-            background: linear-gradient(135deg, #00255a, #003580);
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0,53,128,0.3);
+            box-shadow: 0 8px 25px rgba(255, 183, 0, 0.5);
         }
         
-        .btn-submit i {
-            margin-right: 8px;
-        }
+        .btn-submit i { margin-right: 8px; }
         
-        /* ===== ALERT MESSAGES ===== */
+        /* ===== ALERTS ===== */
         .alert {
             padding: 15px 20px;
             border-radius: 12px;
@@ -305,67 +315,54 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         
         .alert-success {
-            background: #d4edda;
-            color: #155724;
+            background: rgba(40, 167, 69, 0.15);
+            color: #4ade80;
             border-left: 4px solid #28a745;
+            border: 1px solid rgba(40, 167, 69, 0.3);
         }
         
-        .alert-success i {
-            font-size: 20px;
-            color: #28a745;
-        }
+        .alert-success i { font-size: 20px; color: #28a745; }
         
         .alert-danger {
-            background: #f8d7da;
-            color: #721c24;
+            background: rgba(220, 53, 69, 0.15);
+            color: #ff6b6b;
             border-left: 4px solid #dc3545;
+            border: 1px solid rgba(220, 53, 69, 0.3);
         }
         
-        .alert-danger i {
-            font-size: 20px;
-            color: #dc3545;
-        }
+        .alert-danger i { font-size: 20px; color: #dc3545; }
         
-        /* ===== MAP ===== */
+        /* ===== MAP SECTION ===== */
         .map-section {
             grid-column: 1 / -1;
             border-radius: 20px;
             overflow: hidden;
-            box-shadow: 0 5px 25px rgba(0,0,0,0.06);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 183, 0, 0.15);
         }
         
         .map-section iframe {
             width: 100%;
             height: 300px;
             border: none;
+            filter: invert(90%) hue-rotate(180deg);
         }
         
+        /* ===== RESPONSIVE ===== */
         @media (max-width: 768px) { 
             .contact-container { 
                 grid-template-columns: 1fr; 
                 gap: 25px;
             }
-            .info-section {
-                order: 2;
-            }
-            .form-section {
-                order: 1;
-            }
-            .map-section {
-                order: 3;
-            }
-            .page-header h1 {
-                font-size: 26px;
-            }
+            .info-section { order: 2; }
+            .form-section { order: 1; }
+            .map-section { order: 3; }
+            .page-header h1 { font-size: 26px; }
         }
         
         @media (max-width: 480px) {
-            .info-section, .form-section {
-                padding: 25px 20px;
-            }
-            .social-links {
-                justify-content: center;
-            }
+            .info-section, .form-section { padding: 25px 20px; }
+            .social-links { justify-content: center; }
         }
     </style>
 </head>
@@ -373,7 +370,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
 <?php include 'header.php'; ?>
 
-<!-- Page Header -->
 <div class="page-header">
     <h1><i class="fas fa-envelope"></i> Contact Us</h1>
     <p>We'd love to hear from you. Drop us a message and we'll respond as soon as possible.</p>
@@ -435,7 +431,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         <h2><i class="fas fa-paper-plane" style="color:#ffb700;"></i> Send Message</h2>
         <p class="form-sub">Fill in the form below and we'll get back to you.</p>
         
-        <!-- Success Message -->
         <?php if ($message_status == "success"): ?>
             <div class="alert alert-success">
                 <i class="fas fa-check-circle"></i>
@@ -446,7 +441,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             </div>
         <?php endif; ?>
         
-        <!-- Error Message -->
         <?php if (!empty($error)): ?>
             <div class="alert alert-danger">
                 <i class="fas fa-exclamation-circle"></i>
@@ -457,23 +451,52 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             </div>
         <?php endif; ?>
         
-        <form action="contact.php" method="POST" id="contactForm">
+        <form action="contact.php" method="POST" id="contactForm" autocomplete="off">
             
+            <!-- ===== FULL NAME ===== -->
             <div class="form-group <?= (!empty($error) && empty($name)) ? 'error' : '' ?>">
                 <label><i class="fas fa-user"></i> Full Name <span class="required">*</span></label>
-                <input type="text" name="name" placeholder="Enter your full name" value="<?= htmlspecialchars($name) ?>" required>
+                <input type="text" 
+                       name="name" 
+                       placeholder="Enter your full name" 
+                       value="<?= htmlspecialchars($name) ?>" 
+                       autocomplete="off" 
+                       autocorrect="off" 
+                       autocapitalize="off" 
+                       spellcheck="false" 
+                       readonly onfocus="this.removeAttribute('readonly');" 
+                       required>
                 <div class="error-text">Please enter your name</div>
             </div>
             
+            <!-- ===== EMAIL ===== -->
             <div class="form-group <?= (!empty($error) && empty($email)) ? 'error' : '' ?>">
                 <label><i class="fas fa-envelope"></i> Email Address <span class="required">*</span></label>
-                <input type="email" name="email" placeholder="Enter your email address" value="<?= htmlspecialchars($email) ?>" required>
+                <input type="text" 
+                       name="email" 
+                       placeholder="Enter your email address" 
+                       value="<?= htmlspecialchars($email) ?>" 
+                       autocomplete="off" 
+                       autocorrect="off" 
+                       autocapitalize="off" 
+                       spellcheck="false" 
+                       inputmode="email" 
+                       readonly onfocus="this.removeAttribute('readonly');" 
+                       required>
                 <div class="error-text">Please enter a valid email</div>
             </div>
             
+            <!-- ===== MESSAGE ===== -->
             <div class="form-group <?= (!empty($error) && empty($message)) ? 'error' : '' ?>">
                 <label><i class="fas fa-comment"></i> Message <span class="required">*</span></label>
-                <textarea name="message" placeholder="Write your message here..." required><?= htmlspecialchars($message) ?></textarea>
+                <textarea name="message" 
+                          placeholder="Write your message here..." 
+                          autocomplete="off" 
+                          autocorrect="off" 
+                          autocapitalize="off" 
+                          spellcheck="false" 
+                          readonly onfocus="this.removeAttribute('readonly');" 
+                          required><?= htmlspecialchars($message) ?></textarea>
                 <div class="error-text">Please enter your message (min 10 characters)</div>
             </div>
             
@@ -503,23 +526,19 @@ document.getElementById('contactForm').addEventListener('submit', function(e) {
     const message = document.querySelector('textarea[name="message"]');
     let hasError = false;
     
-    // Reset errors
     document.querySelectorAll('.form-group').forEach(el => el.classList.remove('error'));
     
-    // Validate Name
     if (name.value.trim() === '') {
         name.closest('.form-group').classList.add('error');
         hasError = true;
     }
     
-    // Validate Email
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (email.value.trim() === '' || !emailPattern.test(email.value)) {
         email.closest('.form-group').classList.add('error');
         hasError = true;
     }
     
-    // Validate Message
     if (message.value.trim() === '' || message.value.trim().length < 10) {
         message.closest('.form-group').classList.add('error');
         hasError = true;
@@ -527,7 +546,6 @@ document.getElementById('contactForm').addEventListener('submit', function(e) {
     
     if (hasError) {
         e.preventDefault();
-        // Scroll to first error
         const firstError = document.querySelector('.form-group.error');
         if (firstError) {
             firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });

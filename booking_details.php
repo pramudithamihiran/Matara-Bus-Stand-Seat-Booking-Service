@@ -1,8 +1,9 @@
 <?php
 include 'config.php';
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once 'tab_auth.php';
+
+// ============ TAB AUTHENTICATION CHECK ============
+requireTabAuth('login.php');
 
 // ============ GET BOOKING REFERENCE FROM URL ============
 $ref_code = isset($_GET['ref']) ? mysqli_real_escape_string($conn, $_GET['ref']) : '';
@@ -31,6 +32,15 @@ if ($result->num_rows == 0) {
 $booking = $result->fetch_assoc();
 $stmt->close();
 
+// ============ SECURITY: ONLY THE OWNER OF THE BOOKING CAN VIEW ============
+$is_admin = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true;
+$is_owner = isset($_SESSION['user_email']) && $_SESSION['user_email'] === $booking['customer_email'];
+
+if (!$is_admin && !$is_owner) {
+    echo "<script>alert('You do not have permission to view this booking.'); window.location='my_bookings.php';</script>";
+    exit();
+}
+
 // ============ FUNCTION TO GET SAFE VALUE ============
 function getValue($data, $key, $default = 'N/A') {
     return isset($data[$key]) && !empty($data[$key]) ? htmlspecialchars($data[$key]) : $default;
@@ -38,6 +48,13 @@ function getValue($data, $key, $default = 'N/A') {
 
 // ============ GET SEATS ARRAY ============
 $seat_array = isset($booking['seat_numbers']) ? explode(',', $booking['seat_numbers']) : [];
+$seat_count = count($seat_array);
+
+// ============ GET FARE DETAILS ============
+$distance_km = isset($booking['distance_km']) ? floatval($booking['distance_km']) : 0;
+$fare_per_seat = isset($booking['fare_per_seat']) ? floatval($booking['fare_per_seat']) : 0;
+$total_fare = isset($booking['total_fare']) ? floatval($booking['total_fare']) : 0;
+$has_fare = ($distance_km > 0);
 
 // ============ CHECK IF COLUMNS EXIST ============
 $has_customer_name = isset($booking['customer_name']);
@@ -136,25 +153,10 @@ $has_customer_phone = isset($booking['customer_phone']);
             text-transform: uppercase;
         }
         
-        .status-confirmed {
-            background: #d4edda;
-            color: #155724;
-        }
-        
-        .status-pending {
-            background: #fff3cd;
-            color: #856404;
-        }
-        
-        .status-cancelled {
-            background: #f8d7da;
-            color: #721c24;
-        }
-        
-        .status-expired {
-            background: #e2e8f0;
-            color: #718096;
-        }
+        .status-confirmed { background: #d4edda; color: #155724; }
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-cancelled { background: #f8d7da; color: #721c24; }
+        .status-expired { background: #e2e8f0; color: #718096; }
         
         .date-booked {
             color: #888;
@@ -217,6 +219,66 @@ $has_customer_phone = isset($booking['customer_phone']);
             font-weight: 600;
         }
         
+        /* ===== FARE BREAKDOWN ===== */
+        .fare-breakdown {
+            background: #e8f0fe;
+            border-left: 4px solid #28a745;
+            padding: 15px 20px;
+            border-radius: 12px;
+            margin-top: 20px;
+        }
+        
+        .fare-breakdown h4 {
+            color: #003580;
+            font-size: 13px;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .fare-breakdown h4 i {
+            color: #ffb700;
+            margin-right: 5px;
+        }
+        
+        .fare-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+        
+        .fare-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .fare-row .fare-label {
+            color: #666;
+        }
+        
+        .fare-row .fare-value {
+            font-weight: 600;
+            color: #003580;
+        }
+        
+        .fare-divider {
+            border: none;
+            border-top: 1px dashed #ccc;
+            margin: 10px 0;
+        }
+        
+        .fare-row.total-row .fare-label {
+            font-weight: 600;
+            color: #003580;
+            font-size: 15px;
+        }
+        
+        .fare-row.total-row .fare-value {
+            color: #28a745;
+            font-size: 20px;
+            font-weight: 700;
+        }
+        
         .ticket-footer {
             background: #f8faff;
             padding: 15px 30px;
@@ -251,35 +313,12 @@ $has_customer_phone = isset($booking['customer_phone']);
             cursor: pointer;
         }
         
-        .btn-print {
-            background: #6c757d;
-            color: white;
-        }
-        
-        .btn-print:hover {
-            background: #5a6268;
-            transform: translateY(-2px);
-        }
-        
-        .btn-home {
-            background: #003580;
-            color: white;
-        }
-        
-        .btn-home:hover {
-            background: #00255a;
-            transform: translateY(-2px);
-        }
-        
-        .btn-back {
-            background: #e8f0fe;
-            color: #003580;
-        }
-        
-        .btn-back:hover {
-            background: #d4e0f5;
-            transform: translateY(-2px);
-        }
+        .btn-print { background: #6c757d; color: white; }
+        .btn-print:hover { background: #5a6268; transform: translateY(-2px); }
+        .btn-home { background: #003580; color: white; }
+        .btn-home:hover { background: #00255a; transform: translateY(-2px); }
+        .btn-back { background: #e8f0fe; color: #003580; }
+        .btn-back:hover { background: #d4e0f5; transform: translateY(-2px); }
         
         .btn i {
             margin-right: 8px;
@@ -402,7 +441,7 @@ $has_customer_phone = isset($booking['customer_phone']);
                     <div class="value"><?= getValue($booking, 'customer_email', getValue($booking, 'email')) ?></div>
                 </div>
                 
-                <!-- Passenger Name (if exists) -->
+                <!-- Passenger Name -->
                 <?php if ($has_customer_name && !empty($booking['customer_name'])): ?>
                 <div class="detail-item">
                     <div class="label"><i class="fas fa-user"></i> Passenger</div>
@@ -410,7 +449,7 @@ $has_customer_phone = isset($booking['customer_phone']);
                 </div>
                 <?php endif; ?>
                 
-                <!-- Passenger Phone (if exists) -->
+                <!-- Passenger Phone -->
                 <?php if ($has_customer_phone && !empty($booking['customer_phone'])): ?>
                 <div class="detail-item">
                     <div class="label"><i class="fas fa-phone"></i> Phone</div>
@@ -418,16 +457,16 @@ $has_customer_phone = isset($booking['customer_phone']);
                 </div>
                 <?php endif; ?>
                 
-                <!-- Pickup Location -->
+                <!-- Boarding Point -->
                 <div class="detail-item">
                     <div class="label"><i class="fas fa-map-marker-alt"></i> Boarding Point</div>
-                    <div class="value"><?= getValue($booking, 'pickup_location') ?></div>
+                    <div class="value"><?= getValue($booking, 'boarding_point', getValue($booking, 'pickup_location')) ?></div>
                 </div>
                 
-                <!-- Dropoff Location -->
+                <!-- Dropping Point -->
                 <div class="detail-item">
                     <div class="label"><i class="fas fa-flag-checkered"></i> Dropping Point</div>
-                    <div class="value"><?= getValue($booking, 'dropoff_location', getValue($booking, 'drop_location')) ?></div>
+                    <div class="value"><?= getValue($booking, 'dropping_point', getValue($booking, 'dropoff_location')) ?></div>
                 </div>
                 
                 <!-- Seats -->
@@ -444,6 +483,30 @@ $has_customer_phone = isset($booking['customer_phone']);
                     </div>
                 </div>
             </div>
+            
+            <!-- ===== FARE BREAKDOWN ===== -->
+            <?php if ($has_fare): ?>
+            <div class="fare-breakdown">
+                <h4><i class="fas fa-calculator"></i> Fare Breakdown</h4>
+                <div class="fare-row">
+                    <span class="fare-label">Distance:</span>
+                    <span class="fare-value"><?= number_format($distance_km, 1) ?> km</span>
+                </div>
+                <div class="fare-row">
+                    <span class="fare-label">Fare per seat:</span>
+                    <span class="fare-value">Rs. <?= number_format($fare_per_seat, 2) ?></span>
+                </div>
+                <div class="fare-row">
+                    <span class="fare-label">Number of seats:</span>
+                    <span class="fare-value"><?= $seat_count ?></span>
+                </div>
+                <hr class="fare-divider">
+                <div class="fare-row total-row">
+                    <span class="fare-label">Total Fare:</span>
+                    <span class="fare-value">Rs. <?= number_format($total_fare, 2) ?></span>
+                </div>
+            </div>
+            <?php endif; ?>
             
             <!-- Action Buttons -->
             <div class="action-buttons">

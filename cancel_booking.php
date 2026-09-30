@@ -1,8 +1,9 @@
 <?php
 include 'config.php';
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once 'tab_auth.php';
+
+// ============ TAB AUTHENTICATION CHECK ============
+requireTabAuth('login.php');
 
 // Check if user is logged in
 if (!isset($_SESSION['user_logged_in']) || $_SESSION['user_logged_in'] !== true) {

@@ -28,6 +28,9 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+// ============ LOAD TAB AUTHENTICATION FUNCTIONS ============
+require_once __DIR__ . '/tab_auth.php';
+
 // ============ FUNCTION: GET SAFE VALUE ============
 if (!function_exists('getValue')) {
     function getValue($data, $key, $default = 'N/A') {

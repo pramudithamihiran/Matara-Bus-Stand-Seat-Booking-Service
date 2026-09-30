@@ -1,8 +1,9 @@
 <?php
 include 'config.php';
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once 'tab_auth.php';
+
+// ============ TAB AUTHENTICATION CHECK ============
+requireTabAuth('admin_login.php');
 
 // ============ CHECK ADMIN LOGIN ============
 if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true || $_SESSION['role'] !== 'super_admin') {

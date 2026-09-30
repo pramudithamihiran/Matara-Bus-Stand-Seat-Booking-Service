@@ -1,7 +1,9 @@
 <?php
 include 'config.php';
+require_once 'tab_auth.php';
 
-// Check Super Admin
+requireTabAuth('admin_login.php');
+
 if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true || $_SESSION['role'] !== 'super_admin') {
     header("Location: admin_login.php");
     exit();
@@ -11,7 +13,6 @@ $error = '';
 $success = '';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // Get form data
     $bus_name      = trim($_POST['bus_name']);
     $bus_number    = trim($_POST['bus_no']);
     $departure_time= trim($_POST['time']);
@@ -23,14 +24,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $start_location= trim($_POST['start_loc']);
     $end_location  = trim($_POST['end_loc']);
     $seat_capacity = intval($_POST['seat_capacity']);
-    $bus_type      = trim($_POST['bus_type']);
     
-    // Conductor Details
     $conductor_username = trim($_POST['conductor_username']);
     $conductor_password = trim($_POST['conductor_password']);
     $conductor_name     = trim($_POST['conductor_name']);
     
-    // Validation
     if (empty($bus_name) || empty($bus_number) || empty($owner_username) || empty($owner_password)) {
         $error = "Please fill all required fields!";
     } elseif (empty($conductor_username) || empty($conductor_password) || empty($conductor_name)) {
@@ -42,7 +40,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     } elseif (strlen($conductor_password) < 6) {
         $error = "Conductor password must be at least 6 characters long!";
     } else {
-        // Check duplicate bus number
         $check_sql = "SELECT id FROM buses WHERE bus_number = ?";
         $check_stmt = $conn->prepare($check_sql);
         $check_stmt->bind_param("s", $bus_number);
@@ -52,7 +49,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($check_result->num_rows > 0) {
             $error = "This Bus Number already exists!";
         } else {
-            // Check duplicate conductor username
             $check_con_sql = "SELECT id FROM buses WHERE conductor_username = ?";
             $check_con_stmt = $conn->prepare($check_con_sql);
             $check_con_stmt->bind_param("s", $conductor_username);
@@ -62,16 +58,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if ($check_con_result->num_rows > 0) {
                 $error = "Conductor username already exists!";
             } else {
-                // Hash passwords
                 $hashed_owner_password = password_hash($owner_password, PASSWORD_DEFAULT);
                 $hashed_conductor_password = password_hash($conductor_password, PASSWORD_DEFAULT);
                 
-                // Insert
-                $sql = "INSERT INTO buses (bus_name, bus_number, owner_username, owner_password, owner_email, contact_no, route_category, start_location, end_location, departure_time, seat_capacity, bus_type, conductor_username, conductor_password, conductor_name, status) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')";
+                $sql = "INSERT INTO buses (bus_name, bus_number, owner_username, owner_password, owner_email, contact_no, route_category, start_location, end_location, departure_time, seat_capacity, conductor_username, conductor_password, conductor_name, status) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')";
                 
                 $stmt = $conn->prepare($sql);
-                $stmt->bind_param("ssssssssssissss", 
+                $stmt->bind_param("ssssssssssisss", 
                     $bus_name, 
                     $bus_number, 
                     $owner_username, 
@@ -83,7 +77,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $end_location, 
                     $departure_time, 
                     $seat_capacity, 
-                    $bus_type,
                     $conductor_username,
                     $hashed_conductor_password,
                     $conductor_name
@@ -119,50 +112,58 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        
         body { 
             font-family: 'Poppins', sans-serif; 
-            background: linear-gradient(135deg, #00255a 0%, #004080 100%);
+            background: linear-gradient(135deg, #0f0022 0%, #1a0033 50%, #0a0018 100%) !important;
+            background-attachment: fixed !important;
             min-height: 100vh;
             padding: 20px;
-            padding-top: 80px;
+            padding-top: 90px;
+            padding-bottom: 40px;
+            color: #e0e0e0;
         }
         
         .page-wrapper {
-            max-width: 600px;
+            max-width: 650px;
             margin: 0 auto 40px;
             padding: 0 15px;
         }
         
         .form-container {
-            background: rgba(255,255,255,0.95);
-            backdrop-filter: blur(10px);
+            background: rgba(22, 22, 22, 0.85);
+            backdrop-filter: blur(20px);
             padding: 40px;
             border-radius: 24px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            border: 1px solid rgba(255,255,255,0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 183, 0, 0.15);
         }
         
         .form-header {
             text-align: center;
             margin-bottom: 30px;
         }
+        
         .form-header h2 {
-            color: #003580;
+            color: #ffffff;
             font-weight: 700;
             font-size: 22px;
             text-transform: uppercase;
             letter-spacing: 1px;
         }
+        
         .form-header h2 i {
-            color: #28a745;
+            color: #ffb700;
             margin-right: 10px;
         }
+        
         .form-header p {
-            color: #666;
+            color: #b0b0b0;
             font-size: 13px;
             margin-top: 5px;
         }
         
+        /* ===== ALERTS ===== */
         .alert {
             padding: 14px 18px;
             border-radius: 12px;
@@ -173,81 +174,105 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             align-items: center;
             gap: 10px;
         }
+        
         .alert-danger {
-            background: #fce4e4;
-            color: #c0392b;
-            border-left: 4px solid #c0392b;
-        }
-        .alert-success {
-            background: #e4fce4;
-            color: #27ae60;
-            border-left: 4px solid #27ae60;
+            background: rgba(220, 53, 69, 0.15);
+            color: #ff6b6b;
+            border-left: 4px solid #dc3545;
+            border: 1px solid rgba(220, 53, 69, 0.3);
         }
         
+        .alert-success {
+            background: rgba(40, 167, 69, 0.15);
+            color: #4ade80;
+            border-left: 4px solid #28a745;
+            border: 1px solid rgba(40, 167, 69, 0.3);
+        }
+        
+        /* ===== FORM LABELS ===== */
         label {
             display: block;
             margin-top: 18px;
             font-weight: 600;
-            font-size: 13px;
-            color: #333;
-            letter-spacing: 0.3px;
+            font-size: 12px;
+            color: #c9c9c9;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
         }
+        
         label i {
-            color: #003580;
+            color: #ffb700;
             margin-right: 6px;
         }
+        
         label .required {
-            color: #e74c3c;
+            color: #ff6b6b;
             margin-left: 3px;
         }
         
+        /* ===== INPUTS ===== */
         input, select {
             width: 100%;
             padding: 12px 16px;
             margin-top: 6px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid #2a2a2a;
             border-radius: 12px;
             font-family: 'Poppins', sans-serif;
             font-size: 14px;
             outline: none;
             transition: all 0.3s ease;
-            background: #fafafa;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            box-sizing: border-box;
+            color-scheme: dark;
         }
+        
         input:focus, select:focus {
-            border-color: #003580;
-            background: #fff;
-            box-shadow: 0 0 0 4px rgba(0, 53, 128, 0.1);
+            border-color: #ffb700;
+            background: #0a0a0a;
+            box-shadow: 0 0 0 4px rgba(255, 183, 0, 0.1);
         }
+        
         input::placeholder {
-            color: #aaa;
+            color: #666;
             font-size: 13px;
         }
         
+        select option {
+            background: #161616;
+            color: #e0e0e0;
+        }
+        
+        /* ===== ROW LAYOUT ===== */
         .row {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 15px;
         }
         
+        /* ===== SECTION DIVIDER ===== */
         .section-divider {
-            border-top: 2px dashed #d0d7de;
+            border-top: 2px dashed rgba(255, 183, 0, 0.2);
             margin: 28px 0 18px 0;
             padding-top: 18px;
-            color: #003580;
+            color: #ffb700;
             font-weight: 700;
-            font-size: 14px;
+            font-size: 13px;
             display: flex;
             align-items: center;
             gap: 10px;
             letter-spacing: 0.5px;
-        }
-        .section-divider i {
-            color: #28a745;
+            text-transform: uppercase;
         }
         
+        .section-divider i {
+            color: #ffb700;
+        }
+        
+        /* ===== SUBMIT BUTTON ===== */
         .btn {
-            background: linear-gradient(135deg, #28a745, #1e7e34);
-            color: white;
+            background: linear-gradient(135deg, #ffb700, #f5a623);
+            color: #0f0022;
             border: none;
             padding: 16px;
             width: 100%;
@@ -255,39 +280,64 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             margin-top: 28px;
             cursor: pointer;
             font-weight: 700;
-            font-size: 16px;
+            font-size: 15px;
             text-transform: uppercase;
             letter-spacing: 1px;
             transition: all 0.3s ease;
+            font-family: 'Poppins', sans-serif;
+            box-shadow: 0 4px 15px rgba(255, 183, 0, 0.3);
         }
-        .btn:hover {
+        
+        .btn:hover:not(:disabled) {
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.4);
+            box-shadow: 0 8px 25px rgba(255, 183, 0, 0.5);
         }
+        
         .btn:disabled {
             opacity: 0.7;
             cursor: not-allowed;
             transform: none !important;
         }
+        
         .btn i {
             margin-right: 8px;
         }
         
+        /* ===== BACK LINK ===== */
         .back-link {
             display: block;
             text-align: center;
             margin-top: 18px;
-            color: #666;
+            color: #b0b0b0;
             text-decoration: none;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 500;
             transition: 0.2s;
         }
+        
         .back-link:hover {
-            color: #003580;
+            color: #ffb700;
             text-decoration: underline;
         }
         
+        /* ===== PASSWORD STRENGTH ===== */
+        .password-strength {
+            height: 4px;
+            border-radius: 4px;
+            margin-top: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        
+        .password-strength-bar {
+            height: 100%;
+            width: 0%;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+        
+        /* ===== RESPONSIVE ===== */
         @media (max-width: 576px) {
             .row {
                 grid-template-columns: 1fr;
@@ -299,21 +349,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             .page-wrapper {
                 margin-top: 80px;
             }
-        }
-        
-        .password-strength {
-            height: 4px;
-            border-radius: 4px;
-            margin-top: 8px;
-            background: #eee;
-            transition: all 0.3s ease;
-            overflow: hidden;
-        }
-        .password-strength-bar {
-            height: 100%;
-            width: 0%;
-            border-radius: 4px;
-            transition: all 0.3s ease;
+            .form-header h2 {
+                font-size: 18px;
+            }
         }
     </style>
 </head>
@@ -343,7 +381,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         <form method="POST" action="add_bus.php" id="addBusForm">
             
-            <!-- Bus Details -->
+            <!-- ===== BUS DETAILS ===== -->
             <label><i class="fas fa-bus"></i> Bus Name / Service <span class="required">*</span></label>
             <input type="text" name="bus_name" required placeholder="e.g. KEILY SUPER COACH">
             
@@ -378,23 +416,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <option value="Colombo">Colombo Road</option>
             </select>
             
-            <div class="row">
-                <div>
-                    <label><i class="fas fa-chair"></i> Seat Capacity <span class="required">*</span></label>
-                    <input type="number" name="seat_capacity" required placeholder="e.g. 45" min="10" max="70" value="45">
-                </div>
-                <div>
-                    <label><i class="fas fa-bus-alt"></i> Bus Type</label>
-                    <select name="bus_type">
-                        <option value="Normal">Normal</option>
-                        <option value="AC">Air Conditioned (AC)</option>
-                        <option value="Semi-Luxury">Semi-Luxury</option>
-                        <option value="Luxury">Luxury</option>
-                    </select>
-                </div>
-            </div>
+            <label><i class="fas fa-chair"></i> Seat Capacity <span class="required">*</span></label>
+            <input type="number" name="seat_capacity" required min="10" max="70" value="54">
             
-            <!-- Owner Details -->
+            <!-- ===== OWNER DETAILS ===== -->
             <div class="section-divider">
                 <i class="fas fa-user-shield"></i> Create Owner Account
             </div>
@@ -419,7 +444,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             <label><i class="fas fa-phone"></i> Contact Number <span class="required">*</span></label>
             <input type="text" name="contact_no" required placeholder="0714575896">
             
-            <!-- Conductor Details -->
+            <!-- ===== CONDUCTOR DETAILS ===== -->
             <div class="section-divider">
                 <i class="fas fa-user-tie"></i> Create Conductor Account
             </div>
@@ -471,7 +496,7 @@ document.getElementById('owner_password').addEventListener('input', function() {
     bar.style.width = strength + '%';
     if (strength < 40) bar.style.background = '#e74c3c';
     else if (strength < 70) bar.style.background = '#f39c12';
-    else bar.style.background = '#27ae60';
+    else bar.style.background = '#4ade80';
 });
 
 // Password Strength Meter for Conductor
@@ -489,7 +514,7 @@ document.getElementById('conductor_password').addEventListener('input', function
     bar.style.width = strength + '%';
     if (strength < 40) bar.style.background = '#e74c3c';
     else if (strength < 70) bar.style.background = '#f39c12';
-    else bar.style.background = '#27ae60';
+    else bar.style.background = '#4ade80';
 });
 
 // Form Submit Loading
